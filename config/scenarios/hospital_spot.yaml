@@ -1,0 +1,24 @@
+schema_version: 1
+name: hospital_spot
+
+simulation: default
+environment: hospital
+pedestrians: default
+
+navigation:
+  enabled: true
+  map: hospital
+  use_sim_time: true
+  autostart: true
+  use_rviz: true
+  startup_delay_sec: 5.0
+
+robots:
+  - preset: spot
+    instance_name: spot_1
+    namespace: ""
+    pose:
+      position: [-6.0, -1.0, 0.0]
+      orientation_quat_wxyz: [1.0, 0.0, 0.0, 0.0]
+    navigation:
+      profile: spot

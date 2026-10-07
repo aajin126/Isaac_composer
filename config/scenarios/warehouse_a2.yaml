@@ -1,0 +1,25 @@
+schema_version: 1
+name: warehouse_a2
+
+simulation: default
+environment: warehouse
+pedestrians: default
+
+navigation:
+  enabled: true
+  map: warehouse
+  use_sim_time: true
+  autostart: true
+  use_rviz: true
+  startup_delay_sec: 5.0
+
+robots:
+  - preset: a2
+    instance_name: a2_1
+    namespace: ""
+    pose:
+      # Match the root height used by the exported flat-terrain policy.
+      position: [0.0, 0.0, 0.4]
+      orientation_quat_wxyz: [1.0, 0.0, 0.0, 0.0]
+    navigation:
+      profile: a2

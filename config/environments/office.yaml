@@ -1,0 +1,9 @@
+schema_version: 1
+name: office
+
+asset:
+  usd_path: /Isaac/Environments/Office/office.usd
+  prim_path: /World/Environment
+
+stage:
+  meters_per_unit: 1.0

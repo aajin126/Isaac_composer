@@ -1,0 +1,71 @@
+schema_version: 1
+name: a2
+model: A2
+
+spawn:
+  provider: a2_policy
+
+robot:
+  usd_path: usd/a2/a2.usd
+  prim_path: /World/A2
+  links:
+    base:
+      prim_path: base_link
+      frame_id: base_link
+
+controller:
+  provider: from_spawner
+  policy_path: config/robots/A2FlatTerrainPolicy.pt
+  policy_dt: 0.02
+  action_scale: 0.25
+  cmd_vel_topic: /cmd_vel
+  max_command: [1.0, 1.0, 1.0]
+
+sensors:
+  provider: generated
+  items:
+    - name: front_lidar
+      type: rtx_lidar
+      source: generated
+      preset: hesai_jt128
+      enabled: true
+      mount:
+        parent: link:base
+        translation: [0.33767, 0.0, 0.08134]
+        # Official lidar2baselink_R:
+        # [0, 0, 1; 1, 0, 0; 0, 1, 0]
+        orientation_quat_wxyz: [0.5, 0.5, 0.5, 0.5]
+      ros:
+        topic: /unitree/slam_lidar/points1
+        frame_id: front_lidar_link
+        output: point_cloud
+
+    - name: rear_lidar
+      type: rtx_lidar
+      source: generated
+      preset: hesai_jt128
+      enabled: true
+      mount:
+        parent: sensor_mount:front_lidar
+        # Official behind2front transform. Combined with the front transform,
+        # this resolves to approximately [-0.27997, 0.0, 0.08734] in base_link.
+        translation: [0.0, 0.005997, -0.617643765]
+        # behind2front_R = diag(-1, 1, -1), a 180-degree rotation about Y.
+        orientation_quat_wxyz: [0.0, 0.0, 1.0, 0.0]
+      ros:
+        topic: /unitree/slam_lidar/points2
+        frame_id: rear_lidar_link
+        output: point_cloud
+
+ros:
+  provider: generated
+  robot_bridge: a2_mobile_bridge
+  domain_id: 0
+  odom_topic: /odom
+  odom_frame_id: odom
+  base_frame_id: base_link
+
+clock:
+  provider: generated
+  topic: /clock
+  queue_size: 10

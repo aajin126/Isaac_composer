@@ -1,0 +1,54 @@
+schema_version: 1
+name: spot
+model: Spot
+
+spawn:
+  # The current SpotFlatTerrainPolicy constructor owns robot creation.
+  provider: spot_policy
+
+robot:
+  usd_path: /Isaac/Robots/BostonDynamics/spot/spot.usd
+  prim_path: /World/Spot
+  links:
+    base:
+      prim_path: body
+      frame_id: base_link
+
+controller:
+  provider: from_spawner
+  cmd_vel_topic: /cmd_vel
+  max_command: [2.0, 1.0, 2.0]
+
+sensors:
+  provider: generated
+  items:
+    - name: front_lidar
+      type: rtx_lidar
+      source: generated
+      preset: hesai_jt128
+      prim_name: lidar
+      enabled: true
+      mount:
+        parent: link:base
+        prim_name: front_3d_lidar
+        translation: [0.0, 0.0, 0.1]
+        orientation_quat_wxyz: [1.0, 0.0, 0.0, 0.0]
+      ros:
+        topic: /front_3d_lidar/lidar_points
+        frame_id: front_3d_lidar
+        output: point_cloud
+        full_scan: true
+        queue_size: 1
+
+ros:
+  provider: generated
+  robot_bridge: spot_mobile_bridge
+  domain_id: 0
+  odom_topic: /odom
+  odom_frame_id: odom
+  base_frame_id: base_link
+
+clock:
+  provider: generated
+  topic: /clock
+  queue_size: 10

@@ -1,0 +1,24 @@
+schema_version: 1
+name: warehouse_spot
+
+simulation: default
+environment: warehouse
+pedestrians: default
+
+navigation:
+  enabled: true
+  map: warehouse
+  use_sim_time: true
+  autostart: true
+  use_rviz: true
+  startup_delay_sec: 5.0
+
+robots:
+  - preset: spot
+    instance_name: spot_1
+    namespace: ""
+    pose:
+      position: [-6.0, -1.0, 0.6]
+      orientation_quat_wxyz: [1.0, 0.0, 0.0, 0.0]
+    navigation:
+      profile: spot

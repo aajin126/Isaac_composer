@@ -1,0 +1,18 @@
+schema_version: 1
+name: hesai_jt128
+type: rtx_lidar
+
+implementation:
+  # Initial compatibility target. A later migration can replace this provider
+  # with an OmniLidar USD asset without changing any robot YAML.
+  provider: isaac_sim_5_legacy_profile
+  base_config: Example_Rotary
+  source_json: config/sensors/Hesai_JT128.json
+  converted_usd: null
+
+defaults:
+  orientation_quat_wxyz: [1.0, 0.0, 0.0, 0.0]
+  ros:
+    output: point_cloud
+    full_scan: true
+    queue_size: 1

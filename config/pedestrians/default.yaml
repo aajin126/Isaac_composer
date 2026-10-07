@@ -1,0 +1,43 @@
+schema_version: 1
+name: default
+
+seed: 42
+
+navmesh:
+  enabled: true
+  view: false
+  agent_height: 1.8
+  agent_radius: 0.4
+  agent_max_step_height: 0.2
+  agent_max_floor_slope: 45.0
+  auto_rebake_on_changes: false
+  auto_rebake_delay_seconds: 4
+  exclude_rigid_bodies: false
+  dynamic_avoidance: true
+
+people:
+  - name: Character_0
+    character: F_Business_02
+    pose:
+      position: [1.0, 1.0, 0.0]
+      yaw: 0.0
+    radius: 0.30
+    height: 1.70
+    walk_speed: 0.8
+    waypoints:
+      - [5.0, 1.0, 0.0]
+      - [1.0, 1.0, 0.0]
+
+  - name: Character_1
+    character: male_adult_construction_01_new
+    pose:
+      position: [4.0, -1.0, 0.0]
+      yaw: 0.0
+    radius: 0.30
+    height: 1.70
+    walk_speed: 0.8
+    waypoints:
+      - [0.0, -1.0, 0.0]
+      - [4.0, -1.0, 0.0]
+      - [-1.0, 2.0, 0.0]
+      - [0.0, -2.0, 0.0]

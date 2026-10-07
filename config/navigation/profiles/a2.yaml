@@ -1,0 +1,63 @@
+schema_version: 1
+name: a2
+supported: true
+
+nav2:
+  params_file: params/nav2/a2.yaml
+  rviz_file: rviz/a2_navigation.rviz
+
+frames:
+  map: map
+  odom: odom
+  base: base_link
+  lidar: front_lidar_link
+
+topics:
+  cmd_vel: cmd_vel
+  odom: odom
+  pointcloud: unitree/slam_lidar/points1
+  scan: scan
+
+lidar_fusion:
+  # Preserve both raw clouds, but fuse after 2D projection below. Merging two
+  # ~96k-point clouds in Python reduced /scan to about 1 Hz.
+  enabled: false
+  input_topics: [unitree/slam_lidar/points1, unitree/slam_lidar/points2]
+  output_topic: unitree/slam_lidar/points
+  # Retained for an optional full-cloud consumer outside the Nav2 loop.
+  target_frame: base_link
+
+pointcloud_to_laserscan:
+  enabled: true
+  # Robot-body occlusion leaves complementary front/rear coverage. Convert
+  # each cloud in base_link, then merge the two small LaserScan range arrays.
+  cloud_topic: unitree/slam_lidar/points1
+  cloud_topics:
+    - unitree/slam_lidar/points1
+    - unitree/slam_lidar/points2
+  intermediate_scan_topics:
+    - scan_front
+    - scan_rear
+  scan_topic: scan
+  fusion_parameters:
+    first_angle_min: -1.5708
+    first_angle_max: 1.5708
+    second_angle_min: 1.5708
+    second_angle_max: -1.5708
+    max_stamp_delta: 0.25
+  parameters:
+    queue_size: 1
+    target_frame: base_link
+    transform_tolerance: 0.01
+    # Exclude the floor below base_link; projected ground rings otherwise look
+    # like radial PointCloud spokes in RViz.
+    min_height: 0.05
+    max_height: 1.5
+    angle_min: -3.14159
+    angle_max: 3.14159
+    angle_increment: 0.0087
+    scan_time: 0.1
+    range_min: 0.05
+    range_max: 100.0
+    use_inf: true
+    inf_epsilon: 1.0

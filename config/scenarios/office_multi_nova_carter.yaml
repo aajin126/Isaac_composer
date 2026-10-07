@@ -1,0 +1,45 @@
+schema_version: 1
+name: office_multi_nova_carter
+
+simulation: default
+environment: office
+pedestrians: default
+
+navigation:
+  enabled: true
+  map: office
+  use_sim_time: true
+  autostart: true
+  use_rviz: true
+  startup_delay_sec: 0.0
+  parameter_overrides:
+    local_costmap.local_costmap.ros__parameters.width: 10
+    local_costmap.local_costmap.ros__parameters.height: 10
+
+robots:
+  - preset: nova_carter
+    instance_name: carter1
+    namespace: carter1
+    pose:
+      position: [-3.0, -6.0, 0.0]
+      orientation_quat_wxyz: [0.0, 0.0, 0.0, 1.0]
+    navigation:
+      profile: nova_carter_multi
+
+  - preset: nova_carter
+    instance_name: carter2
+    namespace: carter2
+    pose:
+      position: [2.5, 0.0, 0.0]
+      orientation_quat_wxyz: [0.0, 0.0, 0.0, 1.0]
+    navigation:
+      profile: nova_carter_multi
+
+  - preset: nova_carter
+    instance_name: carter3
+    namespace: carter3
+    pose:
+      position: [-2.0, 5.0, 0.0]
+      orientation_quat_wxyz: [0.0, 0.0, 0.0, 1.0]
+    navigation:
+      profile: nova_carter_multi

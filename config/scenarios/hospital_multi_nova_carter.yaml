@@ -1,0 +1,45 @@
+schema_version: 1
+name: hospital_multi_nova_carter
+
+simulation: default
+environment: hospital
+pedestrians: default
+
+navigation:
+  enabled: true
+  map: hospital
+  use_sim_time: true
+  autostart: true
+  use_rviz: true
+  startup_delay_sec: 0.0
+  parameter_overrides:
+    local_costmap.local_costmap.ros__parameters.width: 7
+    local_costmap.local_costmap.ros__parameters.height: 7
+
+robots:
+  - preset: nova_carter
+    instance_name: carter1
+    namespace: carter1
+    pose:
+      position: [0.0, 0.0, 0.0]
+      orientation_quat_wxyz: [0.0, 0.0, 0.0, 1.0]
+    navigation:
+      profile: nova_carter_multi
+
+  - preset: nova_carter
+    instance_name: carter2
+    namespace: carter2
+    pose:
+      position: [4.0, -1.0, 0.0]
+      orientation_quat_wxyz: [0.0, 0.0, 0.0, 1.0]
+    navigation:
+      profile: nova_carter_multi
+
+  - preset: nova_carter
+    instance_name: carter3
+    namespace: carter3
+    pose:
+      position: [7.0, 3.0, 0.0]
+      orientation_quat_wxyz: [0.0, 0.0, 0.0, 1.0]
+    navigation:
+      profile: nova_carter_multi

@@ -1,0 +1,18 @@
+schema_version: 1
+name: default
+
+application:
+  headless: false
+  width: 1280
+  height: 720
+
+physics:
+  dt: 0.002
+
+rendering:
+  dt: 0.03333333333333333
+  renderer: RayTracedLighting
+
+timeline:
+  target_fps: 30.0
+  play_delay: 5.0

@@ -1,0 +1,24 @@
+schema_version: 1
+name: hospital_nova_carter
+
+simulation: default
+environment: hospital
+pedestrians: default
+
+navigation:
+  enabled: true
+  map: hospital
+  use_sim_time: true
+  autostart: true
+  use_rviz: true
+  startup_delay_sec: 10.0
+
+robots:
+  - preset: nova_carter
+    instance_name: nova_carter_1
+    namespace: ""
+    pose:
+      position: [0.0, 0.0, 0.0]
+      orientation_quat_wxyz: [0.0, 0.0, 0.0, 1.0]
+    navigation:
+      profile: nova_carter

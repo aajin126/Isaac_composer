@@ -1,0 +1,3 @@
+schema_version: 1
+name: full_warehouse
+map_file: maps/carter_full_warehouse_navigation.yaml

@@ -1,0 +1,31 @@
+schema_version: 1
+name: nova_carter
+model: Nova_Carter
+
+spawn:
+  provider: usd_reference
+
+robot:
+  usd_path: /Isaac/Samples/ROS2/Robots/Nova_Carter_ROS.usd
+  prim_path: /World/Nova_Carter_ROS
+  # The integrated asset owns its internal hierarchy. Add aliases only when an
+  # external sensor needs to mount to a verified prim.
+  links: {}
+
+controller:
+  provider: embedded
+
+sensors:
+  provider: embedded
+  items: []
+
+ros:
+  provider: embedded
+  domain_id: 0
+
+# The current runner creates /clock outside the Nova Carter asset. Change this
+# to embedded only after confirming that the asset publishes its own clock.
+clock:
+  provider: generated
+  topic: /clock
+  queue_size: 10
