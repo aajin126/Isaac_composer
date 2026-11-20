@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .assets import resolve_asset
-from .config import load_scenario_bundle
+from .config import load_scenario_bundle, override_first_robot_pose
 from .models import RobotContext, SensorHandle
 from .registry import (
     clock_providers,
@@ -32,13 +32,16 @@ EXTENSIONS = (
     "isaacsim.robot.policy.examples",
     "omni.kit.scripting",
     "omni.physx",
+    "omni.replicator.core",
+    "omni.isaac.quadruped",
+)
+
+PEDESTRIAN_EXTENSIONS = (
     "omni.anim.timeline",
     "omni.anim.navigation.core",
-    "omni.replicator.core",
     "omni.anim.graph.core",
     "omni.anim.graph.bundle",
     "omni.anim.people",
-    "omni.isaac.quadruped",
 )
 
 
@@ -71,9 +74,10 @@ class RobotRuntime:
 class SimulationRunner:
     """Compose one validated scenario inside an active SimulationApp."""
 
-    def __init__(self, simulation_app: Any, bundle: dict[str, Any]) -> None:
+    def __init__(self, simulation_app: Any, bundle: dict[str, Any], *, use_pedestrians: bool = False) -> None:
         self.simulation_app = simulation_app
         self.bundle = bundle
+        self.use_pedestrians = use_pedestrians
         self.config_root = Path(bundle["config_root"])
         self.package_root = self.config_root.parent
         self.timeline: Any | None = None
@@ -83,7 +87,6 @@ class SimulationRunner:
         self.people: list[Any] = []
         self.pedestrian_navmesh: Any | None = None
         self.viewport: Any | None = None
-        self.robot_task: Any | None = None
         self.animation_clock: Any | None = None
         simulation = bundle["simulation"]
         self.physics_dt = float(simulation["physics"]["dt"])
@@ -108,12 +111,15 @@ class SimulationRunner:
         import carb
         import omni.kit.app
 
-        if self.bundle["pedestrians"].get("people") or self.bundle["pedestrians"].get("generation"):
-            from .crowd.runtime.clock import CharacterClock
+        if self.use_pedestrians and (
+            self.bundle["pedestrians"].get("people") or self.bundle["pedestrians"].get("generation")
+        ):
+            from .animation_clock import CharacterClock
 
             self.animation_clock = CharacterClock(carb.settings.get_settings())
         manager = omni.kit.app.get_app().get_extension_manager()
-        for extension in EXTENSIONS:
+        extensions = EXTENSIONS + (PEDESTRIAN_EXTENSIONS if self.use_pedestrians else ())
+        for extension in extensions:
             manager.set_extension_enabled_immediate(extension, True)
         self.simulation_app.update()
 
@@ -156,15 +162,12 @@ class SimulationRunner:
 
     def _prepare_pedestrian_routes(self) -> None:
         """Plan fixed/random routes before spawning the robot and pedestrians."""
+        if not self.use_pedestrians:
+            return
         from .pedestrian_routes import prepare_pedestrian_routes
 
-        def update_planning():
-            if not self.simulation_app.is_running():
-                raise KeyboardInterrupt
-            self.simulation_app.update()
-
         self.pedestrian_navmesh = prepare_pedestrian_routes(
-            self.bundle, self.package_root, update_planning
+            self.bundle, self.package_root
         )
         if self.pedestrian_navmesh is not None:
             self.simulation_app.update()
@@ -241,14 +244,14 @@ class SimulationRunner:
             )
 
     def _setup_pedestrians(self) -> None:
+        if not self.use_pedestrians:
+            return
         from .pedestrians import build_pedestrians
 
         self.people = build_pedestrians(
             self.world,
             self.bundle["pedestrians"],
             navmesh_prepared=self.pedestrian_navmesh is not None,
-            nav_scene=self.pedestrian_navmesh,
-            robots=[runtime.context for runtime in self.robots],
         )
         self.simulation_app.update()
 
@@ -269,22 +272,6 @@ class SimulationRunner:
         self.world.reset()
         for runtime in self.robots:
             runtime.controller.start_after_reset(runtime.context, self.world)
-
-        task = self.bundle.get("robot_task_instance")
-        if task is not None:
-            from .robot_task import RobotTaskRuntime
-            from .goal_overlay import GoalOverlay
-            from .goal_route import GoalRoute
-
-            self.robot_task = RobotTaskRuntime(self.robots[0].context, task)
-            self.robot_task.overlay = GoalOverlay(
-                task["goal_world"],
-                task["config"]["goal_radius_m"],
-                route=GoalRoute(
-                    self.bundle.get("robot_navigation_scene", self.pedestrian_navmesh), task
-                ),
-            )
-            self.robot_task.overlay.update(self.robot_task.world_pose())
 
         viewport_config = self.bundle["simulation"].get("viewport", {})
         if viewport_config.get("mode", "follow") != "free":
@@ -336,12 +323,9 @@ class SimulationRunner:
         if self.animation_clock is not None:
             self.animation_clock.advance(float(self.world.current_time) - animation_time, self.people)
         stepped_at = time.perf_counter()
-        if self.robot_task is not None:
-            self.robot_task.update(float(self.world.current_time))
         self.timings.record(
             controller_and_viewport=prepared_at - frame_started,
             world_step=stepped_at - prepared_at,
-            goal_overlay=time.perf_counter() - stepped_at,
             total=time.perf_counter() - frame_started,
         )
         self.frame_count += 1
@@ -350,14 +334,12 @@ class SimulationRunner:
             self.last_log_sim_time = elapsed_sim
             elapsed = time.time() - self.start_wall_time
             real_fps = self.frame_count / elapsed if elapsed > 0.0 else 0.0
-            backend = getattr(self.people[0], "_crowd_runtime", None) if self.people else None
-            crowd_ms = backend.timings.latest.get("total", 0.0) if backend else 0.0
             print(
                 f"SIM_PERFORMANCE frame={self.frame_count}, "
                 f"sim_time={elapsed_sim:.2f}, "
                 f"real_fps={real_fps:.2f}, "
                 f"realtime_factor={elapsed_sim / elapsed if elapsed > 0.0 else 0.0:.2f}, "
-                f"frame_wall_ms={self.timings.latest['total']:.1f}, crowd_wall_ms={crowd_ms:.1f}",
+                f"frame_wall_ms={self.timings.latest['total']:.1f}",
                 flush=True,
             )
 
@@ -367,8 +349,6 @@ class SimulationRunner:
         self.setup()
         while self.simulation_app.is_running():
             self.step()
-            if self.robot_task is not None and self.robot_task.reached:
-                return "goal_reached"
             if max_frames > 0 and self.frame_count >= max_frames:
                 return "frame_limit"
             if (
@@ -385,9 +365,6 @@ class SimulationRunner:
         if self.animation_clock is not None:
             self.animation_clock.close()
             self.animation_clock = None
-        if self.robot_task is not None:
-            self.robot_task.shutdown()
-            self.robot_task = None
         if self.world is not None and self.people:
             from .pedestrians import shutdown_pedestrians
 
@@ -407,6 +384,15 @@ class SimulationRunner:
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run an Isaac Composer scenario")
     parser.add_argument("scenario", help="Scenario preset name or YAML path")
+    parser.add_argument(
+        "--use-pedestrians", action=argparse.BooleanOptionalAction, default=False,
+        help="Spawn the scenario's pedestrian preset; disabled by default",
+    )
+    for coordinate in ("x", "y", "z", "yaw"):
+        parser.add_argument(
+            f"--robot-{coordinate}", default="",
+            help=f"First robot's {coordinate}; empty preserves the scenario pose (meters/radians)",
+        )
     parser.add_argument(
         "--headless",
         action=argparse.BooleanOptionalAction,
@@ -432,33 +418,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--generation-output-dir", default="", help="Store generated scenario artifacts here"
     )
     parser.add_argument(
-        "--run-report", default="", help="Write completion/failure report for an episode supervisor"
-    )
-    parser.add_argument(
         "--view",
         choices=("follow", "top_down", "free"),
         default=None,
         help="Viewport mode; follows the first robot by default",
-    )
-    parser.add_argument(
-        "--robot-task",
-        choices=("auto", "true", "false"),
-        default="auto",
-        help="Randomize robot start and goal, and finish on arrival",
-    )
-    parser.add_argument(
-        "--semantic-plan-dir",
-        default="",
-        help="Load a reviewed Cosmos plan; remaining actors walk randomly",
-    )
-    parser.add_argument("--route-band-half-width-m", type=float, default=3.0)
-    parser.add_argument("--placement-cell-size-m", type=float, default=2.0)
-    parser.add_argument("--route-band-fraction", type=float, default=0.7)
-    parser.add_argument(
-        "--record-crowd-states",
-        choices=("auto", "true", "false"),
-        default="auto",
-        help="Write high-rate crowd ground truth; auto preserves the social-navigation setting",
     )
     return parser.parse_args(argv)
 
@@ -466,42 +429,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> None:
     args = _parse_args(argv)
     bundle = load_scenario_bundle(args.scenario)
-    if args.record_crowd_states != "auto":
-        bundle["pedestrians"]["social_navigation"]["record_states_enabled"] = (
-            args.record_crowd_states == "true"
-        )
-    import math
-
-    if not math.isfinite(args.route_band_fraction) or not 0 <= args.route_band_fraction <= 1:
-        raise ValueError("Route band fraction must be finite and within [0, 1]")
-
-    if any(
-        not math.isfinite(v) or v <= 0
-        for v in (args.route_band_half_width_m, args.placement_cell_size_m)
-    ):
-        raise ValueError(
-            "Placement cell size and route band half-width must be finite and positive"
-        )
-    bundle["pedestrians"]["placement"] = {
-        "route_band_half_width_m": args.route_band_half_width_m,
-        "cell_size_m": args.placement_cell_size_m,
-        "route_band_fraction": args.route_band_fraction,
-    }
-    if args.semantic_plan_dir:
-        if (
-            not bundle["pedestrians"].get("generation")
-            or not bundle["pedestrians"]["social_navigation"]["enabled"]
-        ):
-            raise ValueError(
-                "Semantic activity execution requires generated pedestrians and social navigation"
-            )
-        bundle["pedestrians"]["semantic_plan_dir"] = str(
-            Path(args.semantic_plan_dir).expanduser().resolve()
-        )
-    if args.robot_task != "auto":
-        bundle["robot_task"]["enabled"] = args.robot_task == "true"
-    if args.generation_output_dir:
-        bundle["robot_task"]["output_dir"] = args.generation_output_dir
+    override_first_robot_pose(
+        bundle, x=args.robot_x, y=args.robot_y, z=args.robot_z, yaw=args.robot_yaw
+    )
     if args.seed >= 0:
         bundle["pedestrians"]["seed"] = args.seed
     if args.generation_output_dir and bundle["pedestrians"].get("generation"):
@@ -530,26 +460,12 @@ def main(argv: list[str] | None = None) -> None:
 
     simulation_app = SimulationApp(app_config)
     simulation_app.update()
-    runner = SimulationRunner(simulation_app, bundle)
-    report = {
-        "status": "running",
-        "seed": bundle["pedestrians"].get("seed"),
-        "requested_duration_sec": args.duration_sec,
-    }
+    runner = SimulationRunner(simulation_app, bundle, use_pedestrians=args.use_pedestrians)
     try:
-        reason = runner.run(max_frames=max(0, args.max_frames), duration_sec=args.duration_sec)
-        status = "closed" if reason == "closed" else "complete"
-        if bundle["robot_task"]["enabled"] and reason not in ("goal_reached", "closed"):
-            status = "aborted"
-        report.update(status=status, reason=reason)
+        runner.run(max_frames=max(0, args.max_frames), duration_sec=args.duration_sec)
     except KeyboardInterrupt:
-        report["status"] = "interrupted"
-    except Exception as error:
-        from .semantic_scenario.schema import PlanningRejected
-
-        report.update(
-            status="failed", error=str(error), planning_rejected=isinstance(error, PlanningRejected)
-        )
+        pass
+    except Exception:
         try:
             import carb
 
@@ -559,42 +475,8 @@ def main(argv: list[str] | None = None) -> None:
         raise
     finally:
         try:
-            if runner.robot_task is not None:
-                from .robot_task import save_task
-
-                task = runner.robot_task.task
-                if not runner.robot_task.reached:
-                    task["status"] = report["status"]
-                    save_task(task)
-                report["robot_task"] = dict(task)
-            if args.run_report:
-                report.update(
-                    frames=runner.frame_count,
-                    cpu_timings=runner.timings.summary(),
-                    elapsed_sim_sec=(
-                        float(runner.world.current_time) - runner.episode_start_sim_time
-                        if runner.world is not None and runner.episode_start_sim_time is not None
-                        else 0.0
-                    ),
-                )
-                import json
-
-                if runner.people:
-                    executor = getattr(runner.people[0], "_semantic_executor", None)
-                    if executor is not None:
-                        report["semantic_scenario"] = executor.diagnostics()
-                    navigator = getattr(runner.people[0], "_crowd_navigator", None)
-                    if navigator is not None:
-                        report["crowd_navigation"] = navigator.diagnostics()
-                        backend = getattr(runner.people[0], "_crowd_runtime", None)
-                        if backend is not None and backend.social is not None:
-                            report["crowd_navigation"] = backend.diagnostics()
-
-                report_path = Path(args.run_report)
-                report_path.parent.mkdir(parents=True, exist_ok=True)
-                report_path.write_text(json.dumps(report, indent=2))
-        finally:
             runner.shutdown()
+        finally:
             simulation_app.close()
 
 

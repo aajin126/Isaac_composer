@@ -8,7 +8,7 @@ PACKAGE_NAME = "isaac_composer"
 
 def package_data_files():
     entries = []
-    for root in ("config", "docs", "launch", "maps", "params", "rviz", "scripts", "usd", "third_party"):
+    for root in ("config", "docs", "launch", "rviz", "scripts", "usd"):
         for directory, subdirectories, filenames in os.walk(root):
             subdirectories[:] = [
                 name

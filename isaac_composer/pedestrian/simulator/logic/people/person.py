@@ -76,6 +76,8 @@ class Person:
         # Set the target position for the character
         self._target_position = np.array(init_pos)
         self._target_speed = 0.0
+        self._animation_walk_reference_mps = 1.0
+        self._animation_playback_rate = 1.0
 
         # Set the transition point for the path points
         self._transition_point = np.array(init_pos)
@@ -190,6 +192,7 @@ class Person:
             self._controller.update(dt)
 
         if self._num_path_points == 0:
+            self._animation_playback_rate = 1.0
             self.character_graph.set_variable("Walk", 0.0)
             self.character_graph.set_variable("Action", "Idle")
             if self._backend:
@@ -203,7 +206,11 @@ class Person:
         nearest = self._current_point_index + int(np.argmin(distances))
         self._current_point_index = min(nearest + 1, self._num_path_points - 1)
         self.character_graph.set_variable("PathPoints", [carb.Float3(point) for point in self._target_position])
-        self.character_graph.set_variable("Walk", self._target_speed)
+        # Walk blends from idle to the reference clip. Faster speeds scale the
+        # character clock as well, keeping root motion and footsteps together.
+        ratio = max(0.0, self._target_speed) / self._animation_walk_reference_mps
+        self._animation_playback_rate = max(1.0, ratio)
+        self.character_graph.set_variable("Walk", min(1.0, ratio))
         self.character_graph.set_variable("Action", "Walk" if self._target_speed > 0 else "Idle")
 
         # If we have a backend, update the state of the person
@@ -252,6 +259,10 @@ class Person:
         # Update the current state of the person
         self._state.position = np.array([pos[0], pos[1], pos[2]])
         self._state.orientation = np.array([rot.x, rot.y, rot.z, rot.w])
+
+        capsule = getattr(self, "_collision_capsule", None)
+        if capsule is not None:
+            capsule.update(self._state.position)
 
         # Signal the controller the updated state
         if self._controller:

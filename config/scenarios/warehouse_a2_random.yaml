@@ -3,22 +3,13 @@ name: warehouse_a2_random
 simulation: default
 environment: warehouse
 pedestrians: warehouse_random
-robot_task:
-  enabled: true
-  map_file: maps/carter_warehouse_navigation.yaml
-  min_goal_distance_m: 10.0
-  max_goal_distance_m: 25.0
-  robot_radius_m: 0.55
-  clearance_m: 0.65
-  spawn_height_m: 0.65
-  goal_radius_m: 0.5
-  stopped_speed_mps: 0.1
-  arrival_hold_sec: 0.5
 navigation:
-  enabled: false
+  enabled: true
+  map: warehouse
   use_sim_time: true
-  autostart: false
-  use_rviz: false
+  autostart: true
+  use_rviz: true
+  startup_delay_sec: 5.0
 robots:
 - preset: a2
   instance_name: a2_1
@@ -35,4 +26,4 @@ robots:
     - 0.0
     - 0.0
   navigation:
-    enabled: false
+    profile: a2

@@ -13,7 +13,7 @@ navmesh:
   auto_rebake_on_changes: false
   auto_rebake_delay_seconds: 4
   exclude_rigid_bodies: false
-  dynamic_avoidance: true
+  dynamic_avoidance: false
 
 people:
   - name: Character_0

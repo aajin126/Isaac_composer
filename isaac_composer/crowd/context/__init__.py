@@ -1,1 +1,0 @@
-"""Pedestrian context layer."""

@@ -2,7 +2,6 @@
 """Start Isaac Sim composition and the matching Nav2 scenario."""
 
 import os
-from pathlib import Path
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -31,6 +30,14 @@ def generate_launch_description():
             LaunchConfiguration("isaac_python"),
             os.path.join(package_share, "scripts", "run_scenario.py"),
             scenario,
+            PythonExpression([
+                "'--use-pedestrians' if '", LaunchConfiguration("use_pedestrians"),
+                "'.lower() == 'true' else '--no-use-pedestrians'",
+            ]),
+            "--robot-x", LaunchConfiguration("robot_x"),
+            "--robot-y", LaunchConfiguration("robot_y"),
+            "--robot-z", LaunchConfiguration("robot_z"),
+            "--robot-yaw", LaunchConfiguration("robot_yaw"),
             "--max-frames",
             LaunchConfiguration("max_frames"),
             "--duration-sec",
@@ -39,22 +46,8 @@ def generate_launch_description():
             LaunchConfiguration("seed"),
             "--generation-output-dir",
             LaunchConfiguration("generation_output_dir"),
-            "--semantic-plan-dir",
-            LaunchConfiguration("semantic_plan_dir"),
-            "--route-band-half-width-m",
-            LaunchConfiguration("route_band_half_width_m"),
-            "--placement-cell-size-m",
-            LaunchConfiguration("placement_cell_size_m"),
-            "--route-band-fraction",
-            LaunchConfiguration("route_band_fraction"),
-            "--run-report",
-            LaunchConfiguration("run_report"),
-            "--record-crowd-states",
-            LaunchConfiguration("record_crowd_states"),
             "--view",
             LaunchConfiguration("view"),
-            "--robot-task",
-            LaunchConfiguration("robot_task"),
             PythonExpression(
                 ["'--headless' if '", headless, "'.lower() == 'true' else '--no-headless'"]
             ),
@@ -66,14 +59,24 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             os.path.join(package_share, "launch", "navigation_scenario.launch.py")
         ),
-        launch_arguments={"scenario": scenario}.items(),
+        launch_arguments={
+            "scenario": scenario,
+            "robot_x": LaunchConfiguration("robot_x"),
+            "robot_y": LaunchConfiguration("robot_y"),
+            "robot_z": LaunchConfiguration("robot_z"),
+            "robot_yaw": LaunchConfiguration("robot_yaw"),
+            "use_rviz": LaunchConfiguration("use_rviz"),
+        }.items(),
         condition=IfCondition(LaunchConfiguration("use_navigation")),
     )
     scans = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(package_share, "launch", "scan_scenario.launch.py")
         ),
-        launch_arguments={"scenario": scenario}.items(),
+        launch_arguments={
+            "scenario": scenario,
+            "use_navigation": LaunchConfiguration("use_navigation"),
+        }.items(),
     )
     stop_when_simulation_exits = RegisterEventHandler(
         OnProcessExit(
@@ -94,12 +97,12 @@ def generate_launch_description():
                 description="Isaac Sim python.sh path; set ISAACSIM_PYTHON normally",
             ),
             DeclareLaunchArgument("headless", default_value="false"),
-            DeclareLaunchArgument("route_band_half_width_m", default_value="3.0"),
-            DeclareLaunchArgument("placement_cell_size_m", default_value="2.0"),
-            DeclareLaunchArgument("route_band_fraction", default_value="0.7"),
-            DeclareLaunchArgument(
-                "robot_task", default_value="auto", choices=["auto", "true", "false"]
-            ),
+            # Set defaults here for a preferred starting pose, or pass these
+            # arguments on the command line. Empty values use the scenario.
+            DeclareLaunchArgument("robot_x", default_value="", description="First robot x (m)"),
+            DeclareLaunchArgument("robot_y", default_value="", description="First robot y (m)"),
+            DeclareLaunchArgument("robot_z", default_value="", description="First robot spawn height (m)"),
+            DeclareLaunchArgument("robot_yaw", default_value="", description="First robot yaw (rad)"),
             DeclareLaunchArgument(
                 "view",
                 default_value="follow",
@@ -110,12 +113,12 @@ def generate_launch_description():
             DeclareLaunchArgument("duration_sec", default_value="0.0"),
             DeclareLaunchArgument("seed", default_value="-1"),
             DeclareLaunchArgument("generation_output_dir", default_value=""),
-            DeclareLaunchArgument("semantic_plan_dir", default_value=""),
-            DeclareLaunchArgument("run_report", default_value=""),
-            DeclareLaunchArgument(
-                "record_crowd_states", default_value="auto", choices=["auto", "true", "false"]
-            ),
             DeclareLaunchArgument("use_navigation", default_value="true"),
+            DeclareLaunchArgument("use_rviz", default_value="true", choices=["true", "false"]),
+            DeclareLaunchArgument(
+                "use_pedestrians", default_value="false", choices=["true", "false"],
+                description="Spawn the selected scenario's pedestrian preset only when true",
+            ),
             stop_when_simulation_exits,
             simulation,
             scans,

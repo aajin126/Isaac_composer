@@ -3,7 +3,7 @@ name: nova_carter_multi
 supported: true
 
 nav2:
-  params_file: params/nav2/nova_carter_multi.yaml
+  params_file: config/params/nav2/nova_carter_multi.yaml
   rviz_file: rviz/carter_navigation_namespaced.rviz
 
 frames:

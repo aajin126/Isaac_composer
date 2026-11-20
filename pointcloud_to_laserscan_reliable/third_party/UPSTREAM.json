@@ -1,0 +1,15 @@
+{
+  "repository": "https://github.com/ros-perception/pointcloud_to_laserscan",
+  "commit": "59bf996fb3ee7db0026a5cd3ce0d2a39d2e602ea",
+  "license": "BSD-3-Clause",
+  "original_sha256": {
+    "src/pointcloud_to_laserscan_node.cpp": "ff9b28db0eb9444873498b2a82c08a165eefe31635e87cb9e857cd6b9595971d",
+    "include/pointcloud_to_laserscan/pointcloud_to_laserscan_node.hpp": "480d7e01f224ca1c8ec1fcb913404b1e891e9afe375f1177eaebcfdb78eae3c2",
+    "include/pointcloud_to_laserscan/visibility_control.h": "feb3319264011bb6964b97ae392f837cad98dc6079d6d8d44102ae00bab39409"
+  },
+  "modifications": [
+    "Configurable reliable PointCloud2 subscription instead of fixed SensorDataQoS best effort",
+    "Reliable LaserScan publisher",
+    "Guard the upper angle boundary before indexing range bins"
+  ]
+}

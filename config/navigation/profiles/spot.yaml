@@ -3,7 +3,7 @@ name: spot
 supported: true
 
 nav2:
-  params_file: params/nav2/spot.yaml
+  params_file: config/params/nav2/spot.yaml
   rviz_file: rviz/spot_navigation.rviz
 
 frames:

@@ -16,7 +16,7 @@ from launch.actions import (
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 
-from isaac_composer.config import load_scenario_bundle
+from isaac_composer.config import load_scenario_bundle, override_first_robot_pose
 from isaac_composer.navigation import build_navigation_plan
 
 
@@ -30,6 +30,16 @@ def _launch_scenario_navigation(context):
     bundle = load_scenario_bundle(
         scenario_name,
         config_root=os.path.join(package_share, "config"),
+    )
+    override_first_robot_pose(
+        bundle,
+        x=LaunchConfiguration("robot_x").perform(context),
+        y=LaunchConfiguration("robot_y").perform(context),
+        z=LaunchConfiguration("robot_z").perform(context),
+        yaw=LaunchConfiguration("robot_yaw").perform(context),
+    )
+    bundle["navigation"]["settings"]["use_rviz"] = (
+        LaunchConfiguration("use_rviz").perform(context).lower() == "true"
     )
     plan = build_navigation_plan(bundle, package_root=package_share)
     if not plan.enabled:
@@ -119,6 +129,11 @@ def generate_launch_description():
                 default_value="warehouse_spot",
                 description="Scenario name from config/scenarios or an absolute YAML path",
             ),
+            DeclareLaunchArgument("robot_x", default_value=""),
+            DeclareLaunchArgument("robot_y", default_value=""),
+            DeclareLaunchArgument("robot_z", default_value=""),
+            DeclareLaunchArgument("robot_yaw", default_value=""),
+            DeclareLaunchArgument("use_rviz", default_value="true", choices=["true", "false"]),
             OpaqueFunction(function=_launch_scenario_navigation),
         ]
     )

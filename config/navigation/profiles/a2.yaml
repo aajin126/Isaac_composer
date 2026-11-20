@@ -3,7 +3,7 @@ name: a2
 supported: true
 
 nav2:
-  params_file: params/nav2/a2.yaml
+  params_file: config/params/nav2/a2.yaml
   rviz_file: rviz/a2_navigation.rviz
 
 frames:

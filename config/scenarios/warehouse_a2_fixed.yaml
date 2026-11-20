@@ -4,10 +4,12 @@ simulation: default
 environment: warehouse
 pedestrians: warehouse_fixed
 navigation:
-  enabled: false
+  enabled: true
+  map: warehouse
   use_sim_time: true
-  autostart: false
-  use_rviz: false
+  autostart: true
+  use_rviz: true
+  startup_delay_sec: 5.0
 robots:
 - preset: a2
   instance_name: a2_1
@@ -24,4 +26,4 @@ robots:
     - 0.0
     - 0.0
   navigation:
-    enabled: false
+    profile: a2

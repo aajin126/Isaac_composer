@@ -12,7 +12,7 @@ navmesh:
   agent_max_floor_slope: 45.0
   auto_rebake_on_changes: false
   exclude_rigid_bodies: false
-  dynamic_avoidance: true
+  dynamic_avoidance: false
 
 people: []
 generation:
@@ -25,7 +25,7 @@ generation:
   characters: [F_Business_02]
   output_dir: generated/pedestrians/warehouse_fixed
   scene:
-    occupancy_map: maps/carter_warehouse_navigation.yaml
+    occupancy_map: config/maps/carter_warehouse_navigation.yaml
     map_clearance_m: 0.4
     grid_resolution_m: 0.12
     allowed_region_xy: [-9.5, -11.4, 8.5, 17.0]

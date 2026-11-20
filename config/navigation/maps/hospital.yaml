@@ -1,3 +1,3 @@
 schema_version: 1
 name: hospital
-map_file: maps/carter_hospital_navigation.yaml
+map_file: config/maps/carter_hospital_navigation.yaml

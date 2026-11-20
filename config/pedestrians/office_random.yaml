@@ -9,30 +9,8 @@ navmesh:
   agent_radius: 0.4
   auto_rebake_on_changes: false
   exclude_rigid_bodies: false
-  dynamic_avoidance: true
+  dynamic_avoidance: false
 people: []
-social_navigation:
-  enabled: true
-  yielding_enabled: false    # keep ORCA stiffness; disable deadlock yielding strategy
-  social_stiffness_enabled: true
-  directional_responsibility_enabled: true
-  directional_rear_weight: 0.1
-  directional_smoothing_s: 0.2
-  directional_emergency_gap_m: 0.15  # physical surface gap; restore equal sharing
-  directional_emergency_transition_m: 0.3
-  stiffness_time_horizon_min_s: 2.0
-  stiffness_time_horizon_max_s: 10.0
-  stiffness_buffer_max_m: 0.15  # per-person additional ORCA radius at mu=1
-  stiffness_neighbor_distance_min_m: 2.0
-  stiffness_neighbor_distance_max_m: 10.0
-  mu_range: [0.0, 1.0]
-  safety_margin_m: 0.02       # base pair gap, excluding tracking and mu buffers
-  tracking_margin_m: 0.02     # per pedestrian; base pair gap = 0.06 m
-  robot_safety_margin_m: 0.33
-  density_radius_m: 1.5    # telemetry only
-  progress_hold_s: 0.5
-  progress_min_mps: 0.08
-  progress_min_fraction: 0.15
 generation:
   mode: random
   count: 6

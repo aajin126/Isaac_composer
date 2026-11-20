@@ -135,7 +135,7 @@ class NavMeshScene:
             auto_rebake_delay_seconds=int(self.config.get("auto_rebake_delay_seconds", 4)),
             exclude_rigid_bodies=bool(self.config.get("exclude_rigid_bodies", True)),
             view_nav_mesh=bool(self.config.get("view", False)),
-            dynamic_avoidance_enabled=bool(self.config.get("dynamic_avoidance", True)),
+            dynamic_avoidance_enabled=False,
             navmesh_enabled=bool(self.config.get("enabled", True)),
         )
         self._ensure_include_volume()

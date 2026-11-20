@@ -14,11 +14,12 @@ from isaac_composer.scan_launch import create_scan_actions
 def _launch_scans(context):
     root = Path(get_package_share_directory("isaac_composer")) / "config"
     bundle = load_scenario_bundle(LaunchConfiguration("scenario").perform(context), root)
+    use_navigation = LaunchConfiguration("use_navigation").perform(context).lower() == "true"
     actions = []
     for robot in bundle["robots"]:
         instance = robot["instance"]
         profile_name = instance.get("scan_profile")
-        if not profile_name or instance["navigation"]["enabled"]:
+        if not profile_name or (use_navigation and instance["navigation"]["enabled"]):
             continue
         profile = load_navigation_profile(profile_name, root)
         if not profile["supported"]:
@@ -34,5 +35,6 @@ def _launch_scans(context):
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument("scenario", default_value="warehouse_a2_random"),
+        DeclareLaunchArgument("use_navigation", default_value="false"),
         OpaqueFunction(function=_launch_scans),
     ])

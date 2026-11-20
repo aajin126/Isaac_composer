@@ -1,0 +1,45 @@
+--- a/src/pointcloud_to_laserscan_node.cpp
++++ b/src/pointcloud_to_laserscan_node.cpp
+@@ -59,6 +59,7 @@
+ : rclcpp::Node("pointcloud_to_laserscan", options)
+ {
+   target_frame_ = this->declare_parameter("target_frame", "");
++  reliable_input_ = this->declare_parameter("reliable_input", true);
+   tolerance_ = this->declare_parameter("transform_tolerance", 0.01);
+   // TODO(hidmic): adjust default input queue size based on actual concurrency levels
+   // achievable by the associated executor
+@@ -75,7 +76,7 @@
+   inf_epsilon_ = this->declare_parameter("inf_epsilon", 1.0);
+   use_inf_ = this->declare_parameter("use_inf", true);
+ 
+-  pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>("scan", rclcpp::SensorDataQoS());
++  pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>("scan", rclcpp::QoS(10).reliable());
+ 
+   using std::placeholders::_1;
+   // if pointcloud target frame specified, we need to filter by transform availability
+@@ -119,6 +120,7 @@
+           this->get_logger(),
+           "Got a subscriber to laserscan, starting pointcloud subscriber");
+         rclcpp::SensorDataQoS qos;
++        if (reliable_input_) {qos.reliable();}
+         qos.keep_last(input_queue_size_);
+         sub_.subscribe(this, "cloud_in", qos.get_rmw_qos_profile());
+       }
+@@ -223,6 +225,7 @@
+ 
+     // overwrite range at laserscan ray if new range is smaller
+     int index = (angle - scan_msg->angle_min) / scan_msg->angle_increment;
++    if (index < 0 || static_cast<std::size_t>(index) >= scan_msg->ranges.size()) {continue;}
+     if (range < scan_msg->ranges[index]) {
+       scan_msg->ranges[index] = range;
+     }
+--- a/include/pointcloud_to_laserscan/pointcloud_to_laserscan_node.hpp
++++ b/include/pointcloud_to_laserscan/pointcloud_to_laserscan_node.hpp
+@@ -94,6 +94,7 @@
+   double min_height_, max_height_, angle_min_, angle_max_, angle_increment_, scan_time_, range_min_,
+     range_max_;
+   bool use_inf_;
++  bool reliable_input_;
+   double inf_epsilon_;
+ };
+ 

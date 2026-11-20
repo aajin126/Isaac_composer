@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Generic Nav2 bringup for one scenario robot instance."""
+"""Nav2 and RViz for one robot; scenario.launch.py owns simulation and pedestrians."""
 
 import json
 import os

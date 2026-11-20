@@ -1,7 +1,5 @@
 # Isaac Composer
 
-Cosmos 기반 보행 활동 계획·검토·실행은 [semantic scenario planner](docs/semantic_scenario.md)를 참고한다.
-
 `isaac_composer`는 기존 로봇 이름별 분기를 설정 기반 조합으로 옮기기 위한
 ROS 2 Python 패키지다. A2 USD와 Hesai JT128 프로필처럼 로컬에서 필요한
 자산도 패키지 안에 포함하므로 다른 소스 패키지의 파일을 참조하지 않는다.
@@ -42,16 +40,18 @@ config/
   environments/          환경 USD
   pedestrians/           보행자와 waypoint
   simulation/            physics/render/timeline
+  maps/                  Nav2 occupancy map YAML과 PNG
+  params/nav2/           실제 Nav2 node 파라미터
   navigation/
-    maps/                 map 이름 → maps/*.yaml
+    maps/                 map 이름 → config/maps/*.yaml
     profiles/             로봇별 Nav2/토픽/프레임/scan 변환 계약
 launch/
   scenario.launch.py            simulation과 navigation을 함께 실행
   navigation.launch.py   로봇 1대용 공통 Nav2 launch
   navigation_scenario.launch.py
                           scenario를 읽어 공통 launch를 1회 또는 N회 호출
-maps/                     Nav2 occupancy map YAML과 PNG
-params/nav2/              실제 Nav2 node 파라미터
+pointcloud_to_laserscan_reliable/
+                          내부에 포함한 C++ scan 변환 ROS 패키지
 rviz/                     단일/namespace RViz 설정
 usd/                      패키지에 포함해 설치하는 로컬 USD와 하위 layer
 isaac_composer/
@@ -105,11 +105,15 @@ python3 -m isaac_composer.cli hospital_multi_nova_carter
 navigation을 같은 scenario로 실행할 수 있다.
 
 ```bash
-colcon build --packages-select isaac_composer
+bash src/isaac_composer/scripts/build_workspace.sh --packages-up-to isaac_composer
 source install/setup.bash
 export ISAACSIM_PYTHON=/path/to/isaac-sim/python.sh
 ros2 launch isaac_composer scenario.launch.py scenario:=warehouse_spot
 ```
+
+빌드 스크립트는 내부 `pointcloud_to_laserscan_reliable/` 경로도 colcon에 전달한다.
+`--packages-up-to isaac_composer`로 변환기까지 함께 빌드한다. 폴더 이동 전에 빌드한
+워크스페이스에서는 첫 빌드에 `--cmake-clean-cache`를 추가해 이전 소스 경로를 갱신한다.
 
 Isaac Sim만 실행하려면 다음처럼 navigation을 끈다.
 
@@ -121,97 +125,72 @@ ros2 launch isaac_composer scenario.launch.py \
 `navigation.launch.py`는 낮은 수준의 단일 로봇 진입점이고,
 `navigation_scenario.launch.py`는 navigation만 별도로 붙일 때 사용한다.
 
-## NavMesh 보행자 이동과 데이터 수집
+## 로봇 시작 위치와 랜덤 보행자
 
-화면은 기본적으로 첫 번째 로봇 뒤에서 이동과 수평 회전을 따라간다.
-launch의 `view:=top_down`은 로봇 중심의 탑다운, `view:=free`는 자유 시점이다.
-카메라 거리·높이·완만한 추적 정도는 `config/simulation/default.yaml`의 `viewport`에서
-설정한다. 수집 launch에서도 같은 인자를 사용하며 매 에피소드에 적용된다.
-
-Cosmos 서버와 topology 생성 없이 NavMesh로 시작점과 목적지를 연결한다.
-수집 launch는 로봇 시작 위치·방향과 goal도 랜덤으로 생성한다. 시작 속도는 0이고
-사용자가 teleop으로 목표까지 조종한다. `robot_task:=false`로 preset 시작 위치를
-사용하는 보행자 데모를 실행할 수 있다.
-
-```bash
-cd ~/isaac_ws
-bash src/isaac_composer/scripts/build_workspace.sh --packages-select isaac_composer data_collection
-source install/setup.bash
-```
-
-### 1단계: 지정한 두 지점 사이 이동
-
-```bash
-ros2 launch data_collection collect_pedestrian_episode.launch.py \
-  scenario:=warehouse_a2_fixed robot_task:=false duration_sec:=0
-```
-
-`config/pedestrians/warehouse_fixed.yaml`의 `generation.start`, `goal`은 월드 좌표
-`[x, y, z]`(m)다. `speed_mps`로 속도를 지정한다. 기본값은 `[4, 4, 0]`에서
-`[4, -6, 0]`으로 0.8 m/s 이동하고 도착하면 정지한다. `repeat: true`로 바꾸면
-시작점과 목적지 사이를 왕복한다. 두 점을 직선으로 잇지 않고 NavMesh 최단 경로의
-전체 경유점을 애니메이션 그래프에 전달해 장애물을 우회한다. 목적지 도착은
-XY 거리 0.3 m 이내로 판단한다. 이동 불가능한 지점이나 연결되지 않은 경로는
-오류로 알려주며 다른 시작점으로 임의 변경하지 않는다. NavMesh 투영은 최대
-0.25 m의 XY 보정만 허용한다.
-
-### 2단계: 여러 보행자의 시작점·목적지·속도 랜덤 생성
-
-```bash
-ros2 launch data_collection collect_pedestrians_ogm.launch.py \
-  scenario:=warehouse_a2_random episodes:=10
-```
-
-`config/pedestrians/warehouse_random.yaml`의 `generation.count`(기본 5명),
-`speed_range_mps`(기본 0.6~1.4 m/s)를 변경한다. 목표 속도는 1m/s에서 잘리지 않으며,
-기본 걷기보다 빠른 명령은 보행자별 애니메이션과 root motion을 함께 배속한다.
-`animation_walk_reference_mps`는 기본 클립의 기준이므로 속도 범위를 높일 때 같이
-올리지 않는다. 실제 속도는 클립·회피·회전에 따라 목표값과 차이가 날 수 있다.
-시작점과 목적지는 전체 이동 가능
-영역에서 샘플링하며, 연결된 경로만 채택한다. 로봇 및 다른 보행자와 너무 가까운
-시작점은 다시 뽑는다. 같은 seed는 같은 배치·목표·속도를 재현한다. 기본적으로
-선택한 두 지점 사이를 왕복한다. 랜덤 시나리오는 공식 C++ RVO2로 사람 간 및
-teleop 로봇 회피를 수행한다. 옆으로 피하거나 감속하며 진행할 수 있으면 ORCA를
-유지한다. 안전한 진행·옆 회피 속도가 부족한 상태가 0.5초 지속되면 μ에 따른
-확률로 양보자를 정해 기다리거나 대기 공간으로 물러난다. 밀도는 기록용이다.
-계층별 구현, 설정, 좌표계 및 데이터 형식은 [보행 제어 문서](docs/social_navigation.md)를 참조한다.
-병원은 `scenario:=hospital_a2_random`을 사용한다.
-
-NavMesh는 로봇/사람을 배치하기 전에 환경에서 한 번 bake한다. Include Volume이
-없으면 환경 경계에 맞춰 자동 생성한다. 창고는 기존 occupancy map의 장애물과
-unknown 주변 0.4 m를 제외하고 `allowed_region_xy: [-9.5, -11.4, 8.5, 17.0]`
-범위의 지상 바닥을 사용한다. 경로 선분도 map으로 검사하며 Nav2/map_server는
-필요하지 않다. NavMesh 계산에 환경의 rigid body 장애물도 포함한다.
-
-생성 결과는 기본적으로 `generated/pedestrians/<preset>/`에 저장된다.
-수집 supervisor로 실행하면 각 `episode_XXXXXX/scenario/`에 따로 저장된다.
-
-- `pedestrian_routes.json`: seed, 로봇 위치, 사람별 시작점·속도·경유점·μ
-- `crowd_config.json`, `crowd_state_schema.json`: 밀도/회피 설정과 저장 스키마
-- `crowd_states.jsonl`: 50Hz 관측 상태와 회피 결과
-- `00_free_space.png`: 이동 가능 영역
-- `01_pedestrian_routes.png`: 초기 경로, 시작점(원), 목적지(사각형)
-- 수집의 `episode_runtime.json` 안 `crowd_navigation`: 최종 이동/양보 상태와 통과·우회·복귀 이벤트
-
-새 수집의 기본 출력 경로는 `~/isaac_ws/src/data/A2-OGM-Pedestrians`다.
-
-시뮬레이션만 실행하려면 다음 명령을 사용한다. 이때 조이스틱/recorder는 별도로
-실행해야 한다.
+로봇의 시작 위치는 `scenario.launch.py`의 `robot_x`, `robot_y`, `robot_z`,
+`robot_yaw` 기본값으로 정하거나 실행 인자로 지정한다. 빈 값은 scenario의 pose를
+사용한다. 단위는 m와 rad이며 여러 로봇 중 첫 번째 로봇에 적용한다.
+동일한 x/y/yaw가 Nav2 초기 위치에도 적용된다.
 
 ```bash
 ros2 launch isaac_composer scenario.launch.py \
-  scenario:=warehouse_a2_fixed use_navigation:=false
+  scenario:=warehouse_a2_random \
+  robot_x:=0.0 robot_y:=0.0 robot_z:=0.65 robot_yaw:=0.0
 ```
 
-빌드 스크립트는 `PYTHONNOUSERSITE=1`로 ROS 시스템 setuptools를 사용한다.
-직접 빌드할 때도 `PYTHONNOUSERSITE=1 colcon build --symlink-install`을 사용할 수 있다.
+기본 실행은 로봇 + Nav2 + RViz이며 보행자는 생성하지 않는다.
+`scenario.launch.py`의 `use_pedestrians` 기본값을 true로 바꾸거나 실행 인자로
+`use_pedestrians:=true`를 지정했을 때만 선택한 scenario의 보행자 preset을 생성한다.
+`*_a2_random`과 `warehouse_a2_fixed`도 Nav2와 RViz를 기본으로 실행한다.
+
+```bash
+# Robot + Nav2 + RViz, no pedestrians
+ros2 launch isaac_composer scenario.launch.py scenario:=warehouse_a2_random
+
+# Add the warehouse_random pedestrian preset
+ros2 launch isaac_composer scenario.launch.py \
+  scenario:=warehouse_a2_random use_pedestrians:=true
+```
+
+`use_rviz:=false`는 RViz만 끄고, `use_navigation:=false`는 Nav2와 RViz를 끈다.
+Nav2를 끈 경우에도 scan 변환은 실행하며, Nav2를 켠 경우에는 중복 실행하지 않는다.
+`navigation.launch.py`는 Nav2/RViz용 하위 launch다. 전체 실행 설정은
+`scenario.launch.py`에서 지정한다.
+
+보행자는 `config/pedestrians/*_random.yaml`의 `generation.count`,
+`speed_range_mps`, `repeat` 설정으로 생성한다. 시작점과 목적지는 전체 NavMesh에서
+샘플링하고 연결된 경로만 채택한다. 초기 배치의 최소 간격은 유지하며,
+시작한 뒤에는 ORCA, 양보, 사람 간 회피, 로봇 회피를 사용하지 않는다.
+보행자에는 `radius`와 `height`에 맞는 보이지 않는 kinematic capsule을 붙이고,
+애니메이션의 실제 위치에 맞춰 갱신한다. 보행자끼리의 물리 충돌만 제외하고
+로봇과의 접촉은 허용한다. 보행자는 정해진 경로를 유지하며 로봇은 capsule과 충돌한다.
+벽 우회는 환경에서 bake한 NavMesh 경로가 담당한다.
+
+고정 경로 보행자는 다음처럼 실행한다.
+
+```bash
+ros2 launch isaac_composer scenario.launch.py scenario:=warehouse_a2_fixed use_pedestrians:=true
+```
+
+기본 클립보다 빠른 목표 속도는 보행자별 애니메이션과 root motion을 함께 배속한다.
+`animation_walk_reference_mps`의 기본값은 1.0이며 기본 클립의 기준 속도다.
+정지·속도 변경 이벤트, 시작 지연, 시작점과 목적지 사이 왕복을 지원한다.
+
+NavMesh는 로봇/사람 배치 전에 환경에서 한 번 bake한다. Include Volume이
+없으면 환경 경계에 맞춰 자동 생성한다. 창고는 occupancy map과
+`generation.scene.allowed_region_xy`로 지상 바닥 영역을 제한한다.
+생성 경로와 seed는 `generated/pedestrians/<preset>/pedestrian_routes.json`,
+이동 가능 영역과 경로 이미지는 `00_free_space.png`, `01_pedestrian_routes.png`로 저장한다.
+
+화면은 기본적으로 첫 번째 로봇을 따라간다. `view:=top_down`은 탑다운,
+`view:=free`는 자유 시점이다. 카메라 설정은 `config/simulation/default.yaml`에 있다.
 
 ## 새 조합 추가
 
 1. 기존 로봇이면 `config/robots`는 건드리지 않는다.
-2. 다른 Nav2 동역학/footprint/센서 구성이 필요할 때만 `params/nav2`와
+2. 다른 Nav2 동역학/footprint/센서 구성이 필요할 때만 `config/params/nav2`와
    `config/navigation/profiles`에 프로필을 추가한다.
-3. 새 맵은 `maps`에 YAML/이미지를 넣고 `config/navigation/maps`에서 이름을 붙인다.
+3. 새 맵은 `config/maps`에 YAML/이미지를 넣고 `config/navigation/maps`에서 이름을 붙인다.
 4. `config/scenarios`에서 환경, 로봇, 위치, map, navigation profile을 묶는다.
 
 로봇 위치 quaternion은 spawn과 AMCL에 함께 사용된다. AMCL은 평면 시스템이라

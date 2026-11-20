@@ -294,11 +294,10 @@ def validate_pedestrian_config(document: dict[str, Any]) -> dict[str, Any]:
         raise ConfigError("Only pedestrian schema_version 1 is supported")
     _require_string(normalized, "name", "pedestrians")
     _require_mapping(normalized, "navmesh", "pedestrians")
-    from .crowd.config import validate_social_config
-    try:
-        normalized['social_navigation'] = validate_social_config(normalized.get('social_navigation', {}))
-    except ValueError as error:
-        raise ConfigError(str(error)) from error
+    reference_speed = normalized.get("animation_walk_reference_mps", 1.0)
+    if (isinstance(reference_speed, bool) or not isinstance(reference_speed, (int, float))
+            or not math.isfinite(reference_speed) or reference_speed <= 0):
+        raise ConfigError("pedestrians.animation_walk_reference_mps must be positive and finite")
     people = normalized.get("people")
     if not isinstance(people, list):
         raise ConfigError("pedestrians.people must be a list")
@@ -306,10 +305,6 @@ def validate_pedestrian_config(document: dict[str, Any]) -> dict[str, Any]:
         context = f"pedestrians.people[{index}]"
         if not isinstance(person, dict):
             raise ConfigError(f"{context} must be a mapping")
-        if 'mu' in person:
-            mu=person['mu']
-            if isinstance(mu,bool) or not isinstance(mu,(int,float)) or not math.isfinite(mu) or not 0<=mu<=1:
-                raise ConfigError(f'{context}.mu must be within [0, 1]')
         _require_string(person, "name", context)
         _require_string(person, "character", context)
         pose = _require_mapping(person, "pose", context)
@@ -457,28 +452,6 @@ def validate_scenario_config(document: dict[str, Any]) -> dict[str, Any]:
     _require_string(normalized, "environment", "scenario")
     _require_string(normalized, "pedestrians", "scenario")
 
-    from .robot_task_config import TASK_DEFAULTS
-    task = normalized.get('robot_task', {})
-    if not isinstance(task, dict):
-        raise ConfigError('scenario.robot_task must be a mapping')
-    task = {**TASK_DEFAULTS, **task}
-    if 'map_file' in task:
-        _require_string(task, 'map_file', 'scenario.robot_task')
-    _validate_bool(task['enabled'], 'scenario.robot_task.enabled')
-    for key in TASK_DEFAULTS:
-        if key in ('enabled', 'max_attempts'):
-            continue
-        value = task[key]
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
-            raise ConfigError(f'scenario.robot_task.{key} must be finite and positive')
-    if task['max_goal_distance_m'] < task['min_goal_distance_m']:
-        raise ConfigError('robot_task max distance must be >= min distance')
-    if task['clearance_m'] < task['robot_radius_m']:
-        raise ConfigError('robot_task clearance must cover the robot radius')
-    if isinstance(task['max_attempts'], bool) or not isinstance(task['max_attempts'], int) or task['max_attempts'] <= 0:
-        raise ConfigError('robot_task.max_attempts must be a positive integer')
-    normalized['robot_task'] = task
-
     navigation = _require_mapping(normalized, "navigation", "scenario")
     enabled = navigation.get("enabled")
     _validate_bool(enabled, "scenario.navigation.enabled")
@@ -594,6 +567,45 @@ def load_scenario_config(name_or_path, config_root=None):
     return _load_named(name_or_path, "scenarios", validate_scenario_config, config_root)
 
 
+def override_first_robot_pose(bundle, *, x="", y="", z="", yaw="") -> None:
+    """Apply launch coordinates to the first robot before spawning or planning Nav2.
+
+    Empty values preserve the scenario pose. Yaw is in radians; z is the
+    physical spawn height, while Nav2 continues to use a planar z of zero.
+    """
+    values = {}
+    for key, raw in (("x", x), ("y", y), ("z", z), ("yaw", yaw)):
+        if raw is None or raw == "":
+            continue
+        try:
+            value = float(raw)
+        except (TypeError, ValueError) as error:
+            raise ConfigError(f"robot_{key} must be a finite number") from error
+        if not math.isfinite(value):
+            raise ConfigError(f"robot_{key} must be a finite number")
+        values[key] = value
+    if not values:
+        return
+
+    instance = bundle["robots"][0]["instance"]
+    position = instance["pose"]["position"]
+    for index, key in enumerate(("x", "y", "z")):
+        if key in values:
+            position[index] = values[key]
+    if "yaw" in values:
+        half_yaw = values["yaw"] / 2.0
+        instance["pose"]["orientation_quat_wxyz"] = [
+            math.cos(half_yaw), 0.0, 0.0, math.sin(half_yaw)
+        ]
+
+    # An explicit localization pose must follow the same launch override.
+    initial_pose = instance["navigation"].get("initial_pose")
+    if initial_pose is not None:
+        for key in ("x", "y", "yaw"):
+            if key in values:
+                initial_pose[key] = values[key]
+
+
 def load_scenario_bundle(name_or_path, config_root=None) -> dict[str, Any]:
     """Load one scenario and validate every referenced reusable preset."""
 
@@ -622,7 +634,6 @@ def load_scenario_bundle(name_or_path, config_root=None) -> dict[str, Any]:
         "simulation": load_simulation_config(scenario["simulation"], root),
         "environment": load_environment_config(scenario["environment"], root),
         "pedestrians": load_pedestrian_config(scenario["pedestrians"], root),
-        "robot_task": copy.deepcopy(scenario['robot_task']),
         "navigation": {
             "settings": copy.deepcopy(scenario["navigation"]),
             "map": navigation_map,
