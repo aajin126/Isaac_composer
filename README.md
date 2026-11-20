@@ -1,6 +1,6 @@
 # Isaac Composer
 
-Robot navigation with optional pedestrians. Requires ROS 2 Humble, Isaac Sim 5.1, and PyTorch.
+Configure robots, environments, and pedestrians for navigation simulation in Isaac Sim. Requires ROS 2 Humble, Isaac Sim 5.1, and PyTorch.
 
 - Isaac Sim: `~/develop/isaacsim`
 - Python: `~/anaconda3/envs/env_isaacsim/bin/python`
