@@ -15,11 +15,13 @@ robot:
 
 controller:
   provider: from_spawner
-  policy_path: config/robots/A2FlatTerrainPolicy.pt
+  policy_path: config/robots/A2FlatTerrainPolicy_update.pt
+  policy_format: mjlab
   policy_dt: 0.02
   action_scale: 0.25
   cmd_vel_topic: /cmd_vel
-  max_command: [1.0, 1.0, 1.0]
+  # Match the joystick's maximum translation scale (1.0 m/s * 2.0).
+  max_command: [2.0, 2.0, 1.0]
 
 sensors:
   provider: generated
@@ -37,6 +39,7 @@ sensors:
         orientation_quat_wxyz: [0.5, 0.5, 0.5, 0.5]
       ros:
         topic: /unitree/slam_lidar/points1
+        queue_size: 10
         frame_id: front_lidar_link
         output: point_cloud
 
@@ -54,6 +57,7 @@ sensors:
         orientation_quat_wxyz: [0.0, 0.0, 1.0, 0.0]
       ros:
         topic: /unitree/slam_lidar/points2
+        queue_size: 10
         frame_id: rear_lidar_link
         output: point_cloud
 

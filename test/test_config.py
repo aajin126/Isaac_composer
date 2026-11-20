@@ -17,6 +17,32 @@ from isaac_composer.navigation import build_navigation_plan
 from isaac_composer.registry import ProviderRegistry, RegistryError
 
 
+def test_scenario_loading_does_not_import_simulation_dependencies():
+    import subprocess
+    import sys
+
+    # A fresh interpreter catches dependencies hidden by pytest's import cache.
+    script = '''
+import importlib.abc
+import sys
+
+class BlockSimulationImports(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.split('.')[0] in ('numpy', 'scipy', 'omni', 'isaacsim') or fullname == 'isaac_composer.robot_task':
+            raise AssertionError('Configuration imported simulation dependency: ' + fullname)
+
+sys.meta_path.insert(0, BlockSimulationImports())
+from isaac_composer.config import load_scenario_bundle
+for name in ('warehouse_a2_random', 'hospital_a2_random', 'warehouse_a2_fixed'):
+    bundle = load_scenario_bundle(name)
+    assert bundle['robot_task']['min_goal_distance_m'] > 0
+    assert bundle['robot_task']['max_goal_distance_m'] >= bundle['robot_task']['min_goal_distance_m']
+assert load_scenario_bundle('warehouse_a2_random')['robot_task']['enabled']
+'''
+    result = subprocess.run([sys.executable, '-c', script], capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 class RobotConfigTests(unittest.TestCase):
     def test_all_robot_configs_use_the_same_required_sections(self):
         for robot_name in ("a2", "spot", "nova_carter"):
@@ -185,7 +211,7 @@ class ScenarioConfigTests(unittest.TestCase):
             profile["pointcloud_to_laserscan"]["cloud_topics"],
         )
         self.assertEqual(instance.converter_scan_topics, ["scan_front", "scan_rear"])
-        self.assertEqual(instance.scan_fusion_parameters["first_angle_max"], 1.5708)
+        self.assertAlmostEqual(instance.scan_fusion_parameters["first_angle_max"], 1.5707963267948966)
 
         package_root = Path(__file__).resolve().parents[1]
         robot = load_robot_config("a2")

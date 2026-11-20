@@ -169,6 +169,7 @@ class A2PolicySpawner(_SpawnerBase):
             ),
             policy_dt=float(preset["controller"].get("policy_dt", 0.02)),
             action_scale=float(preset["controller"].get("action_scale", 0.25)),
+            policy_format=preset["controller"].get("policy_format", "flat"),
         )
         context = self._context(config, root_path, runtime_handle=policy)
         context.metadata["spawn_pose"] = pose

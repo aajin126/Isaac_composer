@@ -8,9 +8,11 @@ import math
 
 import numpy as np
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
-from rclpy.qos import qos_profile_sensor_data
+from rclpy.qos import qos_profile_sensor_data, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import LaserScan
+from message_filters import Subscriber, ApproximateTimeSynchronizer
 
 
 def _stamp_seconds(scan: LaserScan) -> float:
@@ -51,12 +53,8 @@ def merge_ranges(
     a = np.asarray(first.ranges, dtype=np.float32)
     b = np.asarray(second.ranges, dtype=np.float32)
     angles = first.angle_min + np.arange(a.size) * first.angle_increment
-    a_valid = np.isfinite(a) & _angle_mask(
-        angles, first_angle_min, first_angle_max
-    )
-    b_valid = np.isfinite(b) & _angle_mask(
-        angles, second_angle_min, second_angle_max
-    )
+    a_valid = np.isfinite(a) & _angle_mask(angles, first_angle_min, first_angle_max)
+    b_valid = np.isfinite(b) & _angle_mask(angles, second_angle_min, second_angle_max)
     merged = np.full(a.shape, np.inf, dtype=np.float32)
     merged[a_valid & ~b_valid] = a[a_valid & ~b_valid]
     merged[b_valid & ~a_valid] = b[b_valid & ~a_valid]
@@ -66,13 +64,16 @@ def merge_ranges(
 
 
 class LaserScanFusionNode(Node):
-    """Combine the latest front/rear scans without copying their point clouds."""
+    """Combine front/rear scans without copying their point clouds."""
 
     def __init__(self) -> None:
         super().__init__("laser_scan_fusion_node")
         self.declare_parameter("input_topics", ["scan_front", "scan_rear"])
         self.declare_parameter("output_topic", "scan")
         self.declare_parameter("max_stamp_delta", 0.25)
+        self.declare_parameter("reliable_input", False)
+        self.declare_parameter("synchronize_inputs", False)
+        self.declare_parameter("sync_tolerance_sec", 0.03)
         self.declare_parameter("first_angle_min", -math.pi)
         self.declare_parameter("first_angle_max", math.pi)
         self.declare_parameter("second_angle_min", -math.pi)
@@ -92,20 +93,34 @@ class LaserScanFusionNode(Node):
             )
         }
         self._latest: list[LaserScan | None] = [None, None]
+        input_qos = (
+            QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE)
+            if self.get_parameter("reliable_input").value
+            else qos_profile_sensor_data
+        )
         self._publisher = self.create_publisher(
             LaserScan,
             str(self.get_parameter("output_topic").value),
-            qos_profile_sensor_data,
+            QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE),
         )
-        self._subscriptions = [
-            self.create_subscription(
-                LaserScan,
-                topic,
-                lambda message, index=index: self._on_scan(index, message),
-                qos_profile_sensor_data,
+        if self.get_parameter("synchronize_inputs").value:
+            self._scan_subscribers = [
+                Subscriber(self, LaserScan, topic, qos_profile=input_qos) for topic in topics
+            ]
+            self._synchronizer = ApproximateTimeSynchronizer(
+                self._scan_subscribers, 20, float(self.get_parameter("sync_tolerance_sec").value)
             )
-            for index, topic in enumerate(topics)
-        ]
+            self._synchronizer.registerCallback(self._publish_pair)
+        else:
+            self._scan_subscribers = [
+                self.create_subscription(
+                    LaserScan,
+                    topic,
+                    lambda message, index=index: self._on_scan(index, message),
+                    input_qos,
+                )
+                for index, topic in enumerate(topics)
+            ]
         self.get_logger().info(
             f"laser_scan_fusion_node merging {topics} into "
             f"{self.get_parameter('output_topic').value}"
@@ -116,6 +131,9 @@ class LaserScanFusionNode(Node):
         first, second = self._latest
         if first is None or second is None:
             return
+        self._publish_pair(first, second)
+
+    def _publish_pair(self, first: LaserScan, second: LaserScan) -> None:
         if abs(_stamp_seconds(first) - _stamp_seconds(second)) > self._max_stamp_delta:
             return
         try:
@@ -136,9 +154,11 @@ def main(args=None) -> None:
     node = LaserScanFusionNode()
     try:
         rclpy.spin(node)
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":

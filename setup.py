@@ -8,7 +8,7 @@ PACKAGE_NAME = "isaac_composer"
 
 def package_data_files():
     entries = []
-    for root in ("config", "launch", "maps", "params", "rviz", "scripts", "usd"):
+    for root in ("config", "docs", "launch", "maps", "params", "rviz", "scripts", "usd", "third_party"):
         for directory, subdirectories, filenames in os.walk(root):
             subdirectories[:] = [
                 name
@@ -19,6 +19,7 @@ def package_data_files():
                 os.path.join(directory, filename)
                 for filename in filenames
                 if not filename.startswith(".") and not filename.endswith(".pyc")
+                and os.path.isfile(os.path.join(directory, filename))
             ]
             if files:
                 entries.append((os.path.join("share", PACKAGE_NAME, directory), files))
@@ -37,7 +38,7 @@ setup(
         (f"share/{PACKAGE_NAME}", ["package.xml", "README.md"]),
         *package_data_files(),
     ],
-    install_requires=["setuptools", "PyYAML>=6.0"],
+    install_requires=["setuptools", "PyYAML>=6.0", "Pillow", "numpy", "scipy"],
     zip_safe=True,
     maintainer="ewhaglab",
     maintainer_email="maintainer@example.com",

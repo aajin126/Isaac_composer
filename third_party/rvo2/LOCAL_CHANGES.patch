@@ -1,0 +1,250 @@
+--- a/src/Agent.h
++++ b/src/Agent.h
+@@ -77,6 +77,9 @@
+    * @param[in] timeStep The time step of the simulation.
+    */
+   void computeNewVelocity(float timeStep);
++  // Query existing constraints with upstream LP, without changing agent state.
++  bool queryVelocity(const Vector2 &objective, bool directionOpt, Vector2 &result) const;
++  float avoidanceResponsibility(const Agent *other) const;
+ 
+   /**
+    * @brief          Inserts an agent neighbor into the set of neighbors of this
+@@ -120,6 +123,10 @@
+   float maxSpeed_;
+   float neighborDist_;
+   float radius_;
++  bool externallyControlled_ = false;
++  float obstacleRadius_ = -1.0F;
++  // Empty preserves upstream equal sharing. Entries are indexed by agent ID.
++  std::vector<float> avoidanceResponsibilities_;
+   float timeHorizon_;
+   float timeHorizonObst_;
+ 
+--- a/src/RVOSimulator.h
++++ b/src/RVOSimulator.h
+@@ -64,6 +64,13 @@
+  */
+ class RVO_EXPORT RVOSimulator {
+  public:
++  // Local adapter extensions; velocity-obstacle geometry and LP remain intact.
++  void setAgentExternallyControlled(std::size_t agentNo, bool controlled);
++  void setAgentObstacleRadius(std::size_t agentNo, float radius);
++  void setAgentAvoidanceResponsibilities(std::size_t agentNo, const std::vector<float> &shares);
++  float getAgentAvoidanceResponsibility(std::size_t agentNo, std::size_t otherNo) const;
++  bool queryAgentVelocity(std::size_t agentNo, const Vector2 &objective, bool directionOpt,
++                          Vector2 &result) const;
+   /**
+    * @brief Constructs a simulator instance.
+    */
+--- a/src/Agent.cc
++++ b/src/Agent.cc
+@@ -267,8 +267,28 @@
+ }
+ 
+ /* Search for the best new velocity. */
++bool Agent::queryVelocity(const Vector2 &objective, bool directionOpt, Vector2 &result) const {
++  return linearProgram2(orcaLines_, maxSpeed_, objective, directionOpt, result) == orcaLines_.size();
++}
++
++float Agent::avoidanceResponsibility(const Agent *other) const {
++  if (externallyControlled_) return 0.0F;
++  if (other->externallyControlled_) return 1.0F;
++  if (avoidanceResponsibilities_.empty()) return 0.5F;
++  // A short mu-dependent range (or neighbor budget) may hide us from the
++  // other pedestrian. Never delegate avoidance to someone with no constraint.
++  bool reciprocal = false;
++  for (const auto &neighbor : other->agentNeighbors_) {
++    if (neighbor.second == this) { reciprocal = true; break; }
++  }
++  if (!reciprocal) return 1.0F;
++  return avoidanceResponsibilities_[other->id_];
++}
++
+ void Agent::computeNewVelocity(float timeStep) {
+   orcaLines_.clear();
++  if (externallyControlled_) { newVelocity_ = velocity_; return; }
++  const float obstacleRadius = obstacleRadius_ < 0 ? radius_ : obstacleRadius_;
+ 
+   const float invTimeHorizonObst = 1.0F / timeHorizonObst_;
+ 
+@@ -287,11 +307,11 @@
+     for (std::size_t j = 0U; j < orcaLines_.size(); ++j) {
+       if (det(invTimeHorizonObst * relativePosition1 - orcaLines_[j].point,
+               orcaLines_[j].direction) -
+-                  invTimeHorizonObst * radius_ >=
++                  invTimeHorizonObst * obstacleRadius >=
+               -RVO_EPSILON &&
+           det(invTimeHorizonObst * relativePosition2 - orcaLines_[j].point,
+               orcaLines_[j].direction) -
+-                  invTimeHorizonObst * radius_ >=
++                  invTimeHorizonObst * obstacleRadius >=
+               -RVO_EPSILON) {
+         alreadyCovered = true;
+         break;
+@@ -306,7 +326,7 @@
+     const float distSq1 = absSq(relativePosition1);
+     const float distSq2 = absSq(relativePosition2);
+ 
+-    const float radiusSq = radius_ * radius_;
++    const float radiusSq = obstacleRadius * obstacleRadius;
+ 
+     const Vector2 obstacleVector = obstacle2->point_ - obstacle1->point_;
+     const float s =
+@@ -367,13 +387,13 @@
+       const float leg1 = std::sqrt(distSq1 - radiusSq);
+       leftLegDirection =
+           Vector2(
+-              relativePosition1.x() * leg1 - relativePosition1.y() * radius_,
+-              relativePosition1.x() * radius_ + relativePosition1.y() * leg1) /
++              relativePosition1.x() * leg1 - relativePosition1.y() * obstacleRadius,
++              relativePosition1.x() * obstacleRadius + relativePosition1.y() * leg1) /
+           distSq1;
+       rightLegDirection =
+           Vector2(
+-              relativePosition1.x() * leg1 + relativePosition1.y() * radius_,
+-              -relativePosition1.x() * radius_ + relativePosition1.y() * leg1) /
++              relativePosition1.x() * leg1 + relativePosition1.y() * obstacleRadius,
++              -relativePosition1.x() * obstacleRadius + relativePosition1.y() * leg1) /
+           distSq1;
+     } else if (s > 1.0F && distSqLine <= radiusSq) {
+       /* Obstacle viewed obliquely so that right vertex defines velocity
+@@ -388,21 +408,21 @@
+       const float leg2 = std::sqrt(distSq2 - radiusSq);
+       leftLegDirection =
+           Vector2(
+-              relativePosition2.x() * leg2 - relativePosition2.y() * radius_,
+-              relativePosition2.x() * radius_ + relativePosition2.y() * leg2) /
++              relativePosition2.x() * leg2 - relativePosition2.y() * obstacleRadius,
++              relativePosition2.x() * obstacleRadius + relativePosition2.y() * leg2) /
+           distSq2;
+       rightLegDirection =
+           Vector2(
+-              relativePosition2.x() * leg2 + relativePosition2.y() * radius_,
+-              -relativePosition2.x() * radius_ + relativePosition2.y() * leg2) /
++              relativePosition2.x() * leg2 + relativePosition2.y() * obstacleRadius,
++              -relativePosition2.x() * obstacleRadius + relativePosition2.y() * leg2) /
+           distSq2;
+     } else {
+       /* Usual situation. */
+       if (obstacle1->isConvex_) {
+         const float leg1 = std::sqrt(distSq1 - radiusSq);
+         leftLegDirection = Vector2(relativePosition1.x() * leg1 -
+-                                       relativePosition1.y() * radius_,
+-                                   relativePosition1.x() * radius_ +
++                                       relativePosition1.y() * obstacleRadius,
++                                   relativePosition1.x() * obstacleRadius +
+                                        relativePosition1.y() * leg1) /
+                            distSq1;
+       } else {
+@@ -413,8 +433,8 @@
+       if (obstacle2->isConvex_) {
+         const float leg2 = std::sqrt(distSq2 - radiusSq);
+         rightLegDirection = Vector2(relativePosition2.x() * leg2 +
+-                                        relativePosition2.y() * radius_,
+-                                    -relativePosition2.x() * radius_ +
++                                        relativePosition2.y() * obstacleRadius,
++                                    -relativePosition2.x() * obstacleRadius +
+                                         relativePosition2.y() * leg2) /
+                             distSq2;
+       } else {
+@@ -468,7 +488,7 @@
+       const Vector2 unitW = normalize(velocity_ - leftCutoff);
+ 
+       line.direction = Vector2(unitW.y(), -unitW.x());
+-      line.point = leftCutoff + radius_ * invTimeHorizonObst * unitW;
++      line.point = leftCutoff + obstacleRadius * invTimeHorizonObst * unitW;
+       orcaLines_.push_back(line);
+       continue;
+     }
+@@ -478,7 +498,7 @@
+       const Vector2 unitW = normalize(velocity_ - rightCutoff);
+ 
+       line.direction = Vector2(unitW.y(), -unitW.x());
+-      line.point = rightCutoff + radius_ * invTimeHorizonObst * unitW;
++      line.point = rightCutoff + obstacleRadius * invTimeHorizonObst * unitW;
+       orcaLines_.push_back(line);
+       continue;
+     }
+@@ -502,7 +522,7 @@
+       /* Project on cut-off line. */
+       line.direction = -obstacle1->direction_;
+       line.point =
+-          leftCutoff + radius_ * invTimeHorizonObst *
++          leftCutoff + obstacleRadius * invTimeHorizonObst *
+                            Vector2(-line.direction.y(), line.direction.x());
+       orcaLines_.push_back(line);
+       continue;
+@@ -516,7 +536,7 @@
+ 
+       line.direction = leftLegDirection;
+       line.point =
+-          leftCutoff + radius_ * invTimeHorizonObst *
++          leftCutoff + obstacleRadius * invTimeHorizonObst *
+                            Vector2(-line.direction.y(), line.direction.x());
+       orcaLines_.push_back(line);
+       continue;
+@@ -529,7 +549,7 @@
+ 
+     line.direction = -rightLegDirection;
+     line.point =
+-        rightCutoff + radius_ * invTimeHorizonObst *
++        rightCutoff + obstacleRadius * invTimeHorizonObst *
+                           Vector2(-line.direction.y(), line.direction.x());
+     orcaLines_.push_back(line);
+   }
+@@ -604,7 +624,7 @@
+       u = (combinedRadius * invTimeStep - wLength) * unitW;
+     }
+ 
+-    line.point = velocity_ + 0.5F * u;
++    line.point = velocity_ + avoidanceResponsibility(other) * u;
+     orcaLines_.push_back(line);
+   }
+ 
+--- a/src/RVOSimulator.cc
++++ b/src/RVOSimulator.cc
+@@ -201,6 +201,14 @@
+ #endif /* _OPENMP */
+   for (std::size_t i = 0U; i < agents_.size(); ++i) {
+     agents_[i]->computeNeighbors(kdTree_);
++  }
++
++  // Directional sharing needs both agents' CURRENT neighbor lists. Keep this
++  // phase separate, including its OpenMP barrier, before computing any lines.
++#ifdef _OPENMP
++#pragma omp parallel for
++#endif /* _OPENMP */
++  for (std::size_t i = 0U; i < agents_.size(); ++i) {
+     agents_[i]->computeNewVelocity(timeStep_);
+   }
+ 
+@@ -368,4 +376,28 @@
+                                     const Vector2 &velocity) {
+   agents_[agentNo]->velocity_ = velocity;
+ }
++bool RVOSimulator::queryAgentVelocity(std::size_t agentNo, const Vector2 &objective,
++                                     bool directionOpt, Vector2 &result) const {
++  return agents_[agentNo]->queryVelocity(objective, directionOpt, result);
++}
++
++void RVOSimulator::setAgentExternallyControlled(std::size_t agentNo, bool controlled) {
++  agents_[agentNo]->externallyControlled_ = controlled;
++}
++void RVOSimulator::setAgentObstacleRadius(std::size_t agentNo, float radius) {
++  agents_[agentNo]->obstacleRadius_ = radius;
++}
++void RVOSimulator::setAgentAvoidanceResponsibilities(std::size_t agentNo,
++                                                   const std::vector<float> &shares) {
++  agents_[agentNo]->avoidanceResponsibilities_ = shares;
++}
++float RVOSimulator::getAgentAvoidanceResponsibility(std::size_t agentNo,
++                                                   std::size_t otherNo) const {
++  for (const auto &neighbor : agents_[agentNo]->agentNeighbors_) {
++    if (neighbor.second == agents_[otherNo]) {
++      return agents_[agentNo]->avoidanceResponsibility(agents_[otherNo]);
++    }
++  }
++  return -1.0F; // No ORCA agent constraint for this directed pair.
++}
+ } /* namespace RVO */

@@ -1,0 +1,14 @@
+{
+  "repository": "https://github.com/snape/RVO2",
+  "commit": "75822bba14462c2e872ca96423825017ecd24764",
+  "license": "Apache-2.0",
+  "modifications": [
+    "externally controlled agents retain observed velocity; other agents take full avoidance responsibility",
+    "separate obstacle radius for already-eroded NavMesh center boundaries",
+    "read-only velocity queries reuse the original linearProgram2 on existing ORCA constraints",
+    "bridge-only read-only inspection of native agent parameters and selected neighbor IDs for conformance tests",
+    "optional complementary pedestrian avoidance shares supplied by the directional behavior layer; teleop responsibility remains full",
+    "compute all current neighbor lists before velocity constraints; a detected nonreciprocal pedestrian gets full responsibility",
+    "bridge-only native responsibility inspection for integration and behavioral tests"
+  ]
+}

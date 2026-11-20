@@ -1,0 +1,32 @@
+schema_version: 1
+name: office_a2_random
+simulation: default
+environment: office
+pedestrians: office_random
+robot_task:
+  enabled: true
+  map_file: maps/carter_office_navigation.yaml
+  min_goal_distance_m: 5.0
+  max_goal_distance_m: 35.0
+navigation:
+  enabled: false
+  use_sim_time: true
+  autostart: false
+  use_rviz: false
+robots:
+- preset: a2
+  instance_name: a2_1
+  namespace: ''
+  scan_profile: a2
+  pose:
+    position:
+    - 0.0
+    - 0.0
+    - 0.65
+    orientation_quat_wxyz:
+    - 1.0
+    - 0.0
+    - 0.0
+    - 0.0
+  navigation:
+    enabled: false

@@ -11,6 +11,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from nav2_common.launch import RewrittenYaml
+from isaac_composer.scan_launch import converter_package
 
 
 def _as_bool(value):
@@ -139,7 +140,7 @@ def _launch_navigation(context):
         ):
             actions.append(
                 Node(
-                    package="pointcloud_to_laserscan",
+                    package=converter_package(converter_parameters),
                     executable="pointcloud_to_laserscan_node",
                     name=f"pointcloud_to_laserscan_{index}",
                     namespace=namespace,

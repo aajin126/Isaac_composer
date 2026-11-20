@@ -40,22 +40,29 @@ pointcloud_to_laserscan:
     - scan_rear
   scan_topic: scan
   fusion_parameters:
-    first_angle_min: -1.5708
-    first_angle_max: 1.5708
-    second_angle_min: 1.5708
-    second_angle_max: -1.5708
+    reliable_input: true
+    synchronize_inputs: true
+    sync_tolerance_sec: 0.03
+    first_angle_min: -1.5707963267948966
+    first_angle_max: 1.5707963267948966
+    second_angle_min: 1.5707963267948966
+    second_angle_max: -1.5707963267948966
     max_stamp_delta: 0.25
   parameters:
-    queue_size: 1
+    reliable_input: true
+    # This controls both DDS history and the TF message-filter queue. A single
+    # entry can discard large clouds while they wait for the matching TF.
+    queue_size: 10
     target_frame: base_link
     transform_tolerance: 0.01
     # Exclude the floor below base_link; projected ground rings otherwise look
     # like radial PointCloud spokes in RViz.
     min_height: 0.05
     max_height: 1.5
-    angle_min: -3.14159
-    angle_max: 3.14159
-    angle_increment: 0.0087
+    # Full 360-degree scan, 0.25-degree bins: 1440 values per frame.
+    angle_min: -3.141592653589793
+    angle_max: 3.141592653589793
+    angle_increment: 0.004363323129985824
     scan_time: 0.1
     range_min: 0.05
     range_max: 100.0

@@ -1,5 +1,6 @@
 # Low level APIs
 import os
+import math
 
 import carb
 import numpy as np
@@ -188,30 +189,22 @@ class Person:
         if self._controller:
             self._controller.update(dt)
 
-        # Compute the distance between the current position and the goal position
-        index_point = self._current_point_index
-        distance_to_target_position = np.linalg.norm(self._target_position[index_point] - self._state.position)
-        # print(self._num_path_points)
-
-        # If we are still far away from the target position, keep moving towards it
-        if self._current_point_index < self._num_path_points:
-            if distance_to_target_position < 0.5:
-                self._current_point_index += 1
-                index_point = self._current_point_index
-                if self._current_point_index == self._num_path_points:
-                    index_point -= 1
-                    self._current_point_index -= 1
-                self.character_graph.set_variable("Action", "Walk")
-                self.character_graph.set_variable("PathPoints", [carb.Float3(self._state.position), carb.Float3(self._target_position[index_point])])
-                self.character_graph.set_variable("Walk", self._target_speed)
-            else:
-                self.character_graph.set_variable("Action", "Walk")
-                self.character_graph.set_variable("PathPoints", [carb.Float3(self._state.position), carb.Float3(self._target_position[index_point])])
-                self.character_graph.set_variable("Walk", self._target_speed)
-        else:
-            # If we are close to the target position, stop moving
+        if self._num_path_points == 0:
             self.character_graph.set_variable("Walk", 0.0)
             self.character_graph.set_variable("Action", "Idle")
+            if self._backend:
+                self._backend.update(self._state, dt)
+            return
+
+        # Follow the complete NavMesh polyline. Sending one tiny segment at a time
+        # makes the animation graph stop inside its own target-arrival tolerance.
+        remaining = self._target_position[self._current_point_index:, :2]
+        distances = np.linalg.norm(remaining - self._state.position[:2], axis=1)
+        nearest = self._current_point_index + int(np.argmin(distances))
+        self._current_point_index = min(nearest + 1, self._num_path_points - 1)
+        self.character_graph.set_variable("PathPoints", [carb.Float3(point) for point in self._target_position])
+        self.character_graph.set_variable("Walk", self._target_speed)
+        self.character_graph.set_variable("Action", "Walk" if self._target_speed > 0 else "Idle")
 
         # If we have a backend, update the state of the person
         if self._backend:
@@ -282,9 +275,9 @@ class Person:
         self.prim.GetAttribute("xformOp:translate").Set(Gf.Vec3d(float(init_pos[0]), float(init_pos[1]), float(init_pos[2])))
 
         if type(self.prim.GetAttribute("xformOp:orient").Get()) == Gf.Quatf:
-            self.prim.GetAttribute("xformOp:orient").Set(Gf.Quatf(Gf.Rotation(Gf.Vec3d(0, 0, 1), float(init_yaw)).GetQuat()))
+            self.prim.GetAttribute("xformOp:orient").Set(Gf.Quatf(Gf.Rotation(Gf.Vec3d(0, 0, 1), math.degrees(float(init_yaw))).GetQuat()))
         else:
-            self.prim.GetAttribute("xformOp:orient").Set(Gf.Rotation(Gf.Vec3d(0, 0, 1), float(init_yaw)).GetQuat())
+            self.prim.GetAttribute("xformOp:orient").Set(Gf.Rotation(Gf.Vec3d(0, 0, 1), math.degrees(float(init_yaw))).GetQuat())
 
         # Get the Skeleton root of the character
         self.character_skel_root, root_path = Person._transverse_prim(self._current_stage, self._stage_prefix)

@@ -1,0 +1,33 @@
+schema_version: 1
+name: warehouse_fixed
+seed: 43
+
+navmesh:
+  auto_include_volume: true
+  enabled: true
+  view: false
+  agent_height: 1.8
+  agent_radius: 0.45
+  agent_max_step_height: 0.2
+  agent_max_floor_slope: 45.0
+  auto_rebake_on_changes: false
+  exclude_rigid_bodies: false
+  dynamic_avoidance: true
+
+people: []
+generation:
+  mode: fixed
+  # World coordinates [x, y, z] in meters. NavMesh routes around obstacles.
+  start: [4.0, 4.0, 0.0]
+  goal: [4.0, -6.0, 0.0]
+  speed_mps: 0.8
+  repeat: false
+  characters: [F_Business_02]
+  output_dir: generated/pedestrians/warehouse_fixed
+  scene:
+    occupancy_map: maps/carter_warehouse_navigation.yaml
+    map_clearance_m: 0.4
+    grid_resolution_m: 0.12
+    allowed_region_xy: [-9.5, -11.4, 8.5, 17.0]
+    floor_z: 0.0
+    floor_tolerance_m: 0.2

@@ -1,0 +1,32 @@
+schema_version: 1
+name: hospital_a2_random
+simulation: default
+environment: hospital
+pedestrians: hospital_random
+robot_task:
+  enabled: true
+  map_file: maps/carter_hospital_navigation.yaml
+  min_goal_distance_m: 10.0
+  max_goal_distance_m: 45.0
+navigation:
+  enabled: false
+  use_sim_time: true
+  autostart: false
+  use_rviz: false
+robots:
+- preset: a2
+  instance_name: a2_1
+  namespace: ''
+  scan_profile: a2
+  pose:
+    position:
+    - 0.0
+    - 0.0
+    - 0.65
+    orientation_quat_wxyz:
+    - 1.0
+    - 0.0
+    - 0.0
+    - 0.0
+  navigation:
+    enabled: false

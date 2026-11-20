@@ -6,13 +6,26 @@ application:
   width: 1280
   height: 720
 
+viewport:
+  mode: follow              # follow / top_down / free
+  distance_m: 6.0           # robot-following camera distance behind the robot
+  height_m: 5.0
+  look_ahead_m: 2.0
+  top_down_height_m: 12.0
+  smoothing_sec: 0.2
+  heading_smoothing_sec: 0.5
+  height_smoothing_sec: 1.0
+  follow_cutaway: true      # hide foreground walls in the viewing camera only
+  follow_cutaway_margin_m: 0.7  # retain this much depth before the robot center
+
 physics:
   dt: 0.002
 
 rendering:
-  dt: 0.03333333333333333
+  dt: 0.02                 # 50 Hz; ten 0.002 s physics steps per frame
   renderer: RayTracedLighting
+  indirect_diffuse_intensity: 10.0  # Ray Tracing > Indirect Diffuse Lighting > Intensity
 
 timeline:
-  target_fps: 30.0
+  target_fps: 50.0
   play_delay: 5.0

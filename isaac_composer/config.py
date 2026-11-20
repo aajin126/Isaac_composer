@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import math
 from pathlib import Path
 from typing import Any
 
@@ -260,7 +261,30 @@ def validate_simulation_config(document: dict[str, Any]) -> dict[str, Any]:
     _validate_positive_number(physics.get("dt"), "simulation.physics.dt")
     _validate_positive_number(rendering.get("dt"), "simulation.rendering.dt")
     _require_string(rendering, "renderer", "simulation.rendering")
+    if "indirect_diffuse_intensity" in rendering:
+        _validate_nonnegative_number(
+            rendering["indirect_diffuse_intensity"],
+            "simulation.rendering.indirect_diffuse_intensity",
+        )
     _validate_positive_number(timeline.get("target_fps"), "simulation.timeline.target_fps")
+    if "viewport" in normalized:
+        viewport = _require_mapping(normalized, "viewport", "simulation")
+        if viewport.get("mode", "follow") not in ("follow", "top_down", "free"):
+            raise ConfigError("simulation.viewport.mode must be follow, top_down, or free")
+        for key in ("distance_m", "height_m", "top_down_height_m"):
+            if key in viewport:
+                _validate_positive_number(viewport[key], f"simulation.viewport.{key}")
+        if 'follow_cutaway' in viewport:
+            _validate_bool(viewport['follow_cutaway'], 'simulation.viewport.follow_cutaway')
+        if 'follow_cutaway_margin_m' in viewport:
+            value = viewport['follow_cutaway_margin_m']
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+                raise ConfigError('simulation.viewport.follow_cutaway_margin_m must be finite and non-negative')
+        for key in ("look_ahead_m", "smoothing_sec", "heading_smoothing_sec", "height_smoothing_sec"):
+            if key in viewport:
+                value = viewport[key]
+                if not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+                    raise ConfigError(f"simulation.viewport.{key} must be finite and non-negative")
     return normalized
 
 
@@ -270,6 +294,11 @@ def validate_pedestrian_config(document: dict[str, Any]) -> dict[str, Any]:
         raise ConfigError("Only pedestrian schema_version 1 is supported")
     _require_string(normalized, "name", "pedestrians")
     _require_mapping(normalized, "navmesh", "pedestrians")
+    from .crowd.config import validate_social_config
+    try:
+        normalized['social_navigation'] = validate_social_config(normalized.get('social_navigation', {}))
+    except ValueError as error:
+        raise ConfigError(str(error)) from error
     people = normalized.get("people")
     if not isinstance(people, list):
         raise ConfigError("pedestrians.people must be a list")
@@ -277,6 +306,10 @@ def validate_pedestrian_config(document: dict[str, Any]) -> dict[str, Any]:
         context = f"pedestrians.people[{index}]"
         if not isinstance(person, dict):
             raise ConfigError(f"{context} must be a mapping")
+        if 'mu' in person:
+            mu=person['mu']
+            if isinstance(mu,bool) or not isinstance(mu,(int,float)) or not math.isfinite(mu) or not 0<=mu<=1:
+                raise ConfigError(f'{context}.mu must be within [0, 1]')
         _require_string(person, "name", context)
         _require_string(person, "character", context)
         pose = _require_mapping(person, "pose", context)
@@ -288,6 +321,54 @@ def validate_pedestrian_config(document: dict[str, Any]) -> dict[str, Any]:
             raise ConfigError(f"{context}.waypoints must be a list")
         for waypoint_index, waypoint in enumerate(waypoints):
             _validate_vector(waypoint, 3, f"{context}.waypoints[{waypoint_index}]")
+    generation = normalized.get("generation")
+    if generation is not None:
+        if not isinstance(generation, dict):
+            raise ConfigError("pedestrians.generation must be a mapping")
+        if people:
+            raise ConfigError("Use either pedestrians.people or generation, not both")
+        mode = generation.get("mode")
+        if mode not in ("fixed", "random"):
+            raise ConfigError("pedestrians.generation.mode must be fixed or random")
+        if not normalized["navmesh"].get("enabled", True):
+            raise ConfigError("Pedestrian route generation requires NavMesh")
+        if mode == "fixed":
+            for name in ("start", "goal"):
+                point = generation.get(name)
+                _validate_vector(point, 3, f"pedestrians.generation.{name}")
+                if not all(math.isfinite(value) for value in point):
+                    raise ConfigError(f"pedestrians.generation.{name} must be finite")
+            if generation["start"][:2] == generation["goal"][:2]:
+                raise ConfigError("Pedestrian start and goal must differ")
+        else:
+            for name, default in (("count", 5), ("max_attempts_per_person", 500)):
+                value = generation.get(name, default)
+                if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                    raise ConfigError(f"pedestrians.generation.{name} must be a positive integer")
+            speeds = generation.get("speed_range_mps", [0.6, 1.4])
+            _validate_vector(speeds, 2, "pedestrians.generation.speed_range_mps")
+            if not all(math.isfinite(v) and v > 0 for v in speeds) or speeds[0] > speeds[1]:
+                raise ConfigError("speed_range_mps must be positive, finite, and ordered")
+            if 'target_density_per_m2' in generation:
+                density=generation['target_density_per_m2']
+                if isinstance(density,bool) or not isinstance(density,(int,float)) or not math.isfinite(density) or density<=0:
+                    raise ConfigError('generation.target_density_per_m2 must be positive and finite')
+            maximum=generation.get('max_count',30)
+            if isinstance(maximum,bool) or not isinstance(maximum,int) or maximum<=0:
+                raise ConfigError('generation.max_count must be a positive integer')
+        for name, default in (("speed_mps", 1.0), ("radius", 0.3), ("height", 1.7),
+                              ("min_route_length_m", 3.0), ("max_projection_m", 0.25),
+                              ("min_spawn_separation_m", 1.0), ("min_robot_separation_m", 1.5)):
+            value = generation.get(name, default)
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+                raise ConfigError(f"pedestrians.generation.{name} must be positive and finite")
+        if "repeat" in generation:
+            _validate_bool(generation["repeat"], "pedestrians.generation.repeat")
+        characters = generation.get("characters", ["F_Business_02"])
+        if not isinstance(characters, list) or not characters or any(not isinstance(v, str) or not v for v in characters):
+            raise ConfigError("pedestrians.generation.characters must be a nonempty list of names")
+        if not isinstance(generation.get("scene", {}), dict):
+            raise ConfigError("pedestrians.generation.scene must be a mapping")
     return normalized
 
 
@@ -376,6 +457,28 @@ def validate_scenario_config(document: dict[str, Any]) -> dict[str, Any]:
     _require_string(normalized, "environment", "scenario")
     _require_string(normalized, "pedestrians", "scenario")
 
+    from .robot_task_config import TASK_DEFAULTS
+    task = normalized.get('robot_task', {})
+    if not isinstance(task, dict):
+        raise ConfigError('scenario.robot_task must be a mapping')
+    task = {**TASK_DEFAULTS, **task}
+    if 'map_file' in task:
+        _require_string(task, 'map_file', 'scenario.robot_task')
+    _validate_bool(task['enabled'], 'scenario.robot_task.enabled')
+    for key in TASK_DEFAULTS:
+        if key in ('enabled', 'max_attempts'):
+            continue
+        value = task[key]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+            raise ConfigError(f'scenario.robot_task.{key} must be finite and positive')
+    if task['max_goal_distance_m'] < task['min_goal_distance_m']:
+        raise ConfigError('robot_task max distance must be >= min distance')
+    if task['clearance_m'] < task['robot_radius_m']:
+        raise ConfigError('robot_task clearance must cover the robot radius')
+    if isinstance(task['max_attempts'], bool) or not isinstance(task['max_attempts'], int) or task['max_attempts'] <= 0:
+        raise ConfigError('robot_task.max_attempts must be a positive integer')
+    normalized['robot_task'] = task
+
     navigation = _require_mapping(normalized, "navigation", "scenario")
     enabled = navigation.get("enabled")
     _validate_bool(enabled, "scenario.navigation.enabled")
@@ -404,6 +507,8 @@ def validate_scenario_config(document: dict[str, Any]) -> dict[str, Any]:
             raise ConfigError(f"{context} must be a mapping")
         _require_string(instance, "preset", context)
         instance_name = _require_string(instance, "instance_name", context)
+        if "scan_profile" in instance:
+            _require_string(instance, "scan_profile", context)
         namespace = instance.get("namespace", "")
         if not isinstance(namespace, str):
             raise ConfigError(f"{context}.namespace must be a string")
@@ -517,6 +622,7 @@ def load_scenario_bundle(name_or_path, config_root=None) -> dict[str, Any]:
         "simulation": load_simulation_config(scenario["simulation"], root),
         "environment": load_environment_config(scenario["environment"], root),
         "pedestrians": load_pedestrian_config(scenario["pedestrians"], root),
+        "robot_task": copy.deepcopy(scenario['robot_task']),
         "navigation": {
             "settings": copy.deepcopy(scenario["navigation"]),
             "map": navigation_map,
